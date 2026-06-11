@@ -1,9 +1,0 @@
-GET http://localhost:8080/api/ledger/tenant
-Auth: Bearer [REDACTED]
-
-Sample fields from first invoice after shortfall test:
-- id: b4324d0f-27d5-4196-b7da-2686e1cb5f97
-- settlementStatus: PARTIALLY_PAID
-- shortfallReason: PARTIAL_NEXT_MONTH
-
-RESULT: PASS (tenant sees own invoice; shortfall persisted)

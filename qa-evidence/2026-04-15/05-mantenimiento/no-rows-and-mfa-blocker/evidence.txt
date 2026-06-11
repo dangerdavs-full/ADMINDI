@@ -1,5 +1,0 @@
-DB: SELECT COUNT(*) FROM maintenance_tickets; -> 0 rows.
-
-Maintenance ticket / quote / expense / payment flows require OWNER or related roles; those roles use MFA in this database.
-
-RESULT: NOT VALIDATED (empty data + MFA on owner-side flows)

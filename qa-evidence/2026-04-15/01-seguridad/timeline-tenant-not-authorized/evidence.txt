@@ -1,5 +1,0 @@
-HTTP_STATUS: 400
-BODY: {"message":"Access Denied"}
-EXPECT: Access blocked for TENANT on GET /api/properties/{id}/timeline (PreAuthorize excludes TENANT).
-NOTE: Product returns HTTP 400 with JSON message "Access Denied" (not 403). Access is still denied.
-RESULT: PASS (blocked)

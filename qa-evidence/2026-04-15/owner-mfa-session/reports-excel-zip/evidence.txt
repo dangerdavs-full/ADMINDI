@@ -1,9 +1,0 @@
-GET /api/reports/monthly?monthYear=2026-04
-HTTP 200, application/octet-stream, small ZIP (bytes vary; local run ~708).
-
-GET /api/reports/monthly/excel?monthYear=2026-04
-HTTP 200
-Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-Body: binary XLSX (size sample ~6kB in local run). File content not committed to repo.
-
-RESULT: PASS (exports authorized for OWNER)

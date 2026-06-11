@@ -1,8 +1,0 @@
-# .cursorignore
-backend/target/
-backend/.mvn/
-frontend/node_modules/
-frontend/dist/
-frontend/.next/
-**/*.class
-**/*.jar

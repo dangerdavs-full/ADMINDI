@@ -98,7 +98,7 @@ twilio:
   # Plantillas aprobadas de WhatsApp Business Platform (Meta). Los Content SIDs (HX…)
   # se asignan en Twilio Console > Messaging > Content Builder después de que Meta
   # aprueba cada plantilla. El nombre de cada property corresponde a la plantilla
-  # esperada en producción (ver WHATSAPP_TEMPLATES.md):
+  # esperada en producción (ver docs/WHATSAPP_TEMPLATES.md):
   #   owner-welcome            → admindi_owner_welcome_v2
   #   tenant-welcome           → admindi_tenant_welcome_v2
   #   owner-profile-updated    → admindi_owner_profile_updated_v3

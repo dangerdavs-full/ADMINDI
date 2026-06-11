@@ -53,3 +53,18 @@ backend/B.java
 backend/error.txt
 backend/compile_errors.txt
 backend/C\:*
+
+# --- Documentos de planeación / trabajo interno (no van al repositorio) ---
+.cursor/
+.cursorignore
+/ADMINDI_*.md
+/PLAN*.md
+/CURSOR_CIERRE*.md
+/DEPLOYMENT_AI_V55.md
+/Resumen.txt
+/ideas\ plataforma.xlsx
+/qa-etapa3-matrix.txt
+/qa-evidence/
+/db-cleanup-keep-superadmin.sql
+/WHATSAPP_TEMPLATES_APROBADAS_34.md
+/tools/

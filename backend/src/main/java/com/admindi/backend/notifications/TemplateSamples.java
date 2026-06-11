@@ -18,7 +18,7 @@ import java.util.Map;
  * <h3>Contrato</h3>
  * <p>Cada sample respeta <strong>exactamente</strong> el mismo orden y cantidad
  * de slots que la plantilla Meta-aprobada, tal como están documentados en
- * {@code WHATSAPP_TEMPLATES.md}. Si la plantilla cambia (v2/v3), actualizar aquí
+ * {@code docs/WHATSAPP_TEMPLATES.md}. Si la plantilla cambia (v2/v3), actualizar aquí
  * <em>primero</em> antes de resubir a Meta.</p>
  *
  * <h3>Datos ficticios, nunca reales</h3>

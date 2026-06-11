@@ -1,4 +1,0 @@
-HTTP_STATUS: 400
-BODY: {"message":"Access Denied"}
-EXPECT: TENANT cannot call monthly report by property.
-RESULT: PASS (blocked)

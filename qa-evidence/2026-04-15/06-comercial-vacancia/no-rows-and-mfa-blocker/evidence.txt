@@ -1,7 +1,0 @@
-DB:
- SELECT COUNT(*) FROM vacancies; -> 0
- SELECT COUNT(*) FROM commercial_activities; -> 0
-
-Vacancy and commercial activity scenarios need lease termination or manual vacancy creation under OWNER (MFA) or seeded data.
-
-RESULT: NOT VALIDATED (empty data + MFA)

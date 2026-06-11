@@ -1,7 +1,0 @@
-DB: SELECT COUNT(*) FROM payment_agreements;  -> 0 rows (local DB).
-
-Convenio flows (evidence upload, installment LATE, agreement BREACHED) require creating agreements and running jobs or time-based transitions. No agreement rows exist locally.
-
-Privileged UI/API paths require roles with MFA enabled in this environment (OWNER, PROPERTY_ADMIN, SUPER_ADMIN). MFA verification was not performed in this automated run.
-
-RESULT: NOT VALIDATED (data + MFA)

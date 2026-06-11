@@ -3,6 +3,8 @@
 Plataforma web multi-tenant para la administración de propiedades en renta: gestión de dueños, inquilinos, contratos, pagos (SPEI / efectivo / Mercado Pago), mantenimiento, agentes inmobiliarios y notificaciones automáticas por correo y WhatsApp.
 
 > **Primera entrega — proyecto académico.** Este repositorio NO contiene tokens, contraseñas ni credenciales reales: todos los secretos se inyectan por variables de entorno o archivos locales ignorados por git (ver [Configuración de credenciales](#3-configuración-de-credenciales)).
+>
+> **Para evaluar el proyecto:** después de la instalación, seguir el procedimiento de **[GUIA_DE_PRUEBAS.md](GUIA_DE_PRUEBAS.md)**.
 
 ---
 
@@ -19,16 +21,17 @@ Plataforma web multi-tenant para la administración de propiedades en renta: ges
 ## Estructura del repositorio
 
 ```
-├── backend/            # API REST Spring Boot (puerto 8080)
+├── backend/             # API REST Spring Boot (puerto 8080)
 │   └── src/main/resources/
 │       ├── application.yml                    # Config base (sin secretos)
 │       ├── application-secrets.yml.example    # Plantilla de secretos → copiar
 │       └── db/                                # Migraciones Flyway
-├── frontend/           # SPA React + Vite (puerto 3000)
-├── scripts/            # Smoke tests y utilidades (ngrok, QA)
-├── docs/               # Documentación de arquitectura
-├── .env.example        # Plantilla de variables de entorno → copiar
-└── *.md                # Documentos de planeación y diseño del proyecto
+├── frontend/            # SPA React + Vite (puerto 3000)
+├── scripts/             # Smoke tests y utilidades (ngrok, QA)
+├── docs/                # Documentación técnica (arquitectura, integraciones)
+├── .env.example         # Plantilla de variables de entorno → copiar
+├── GUIA_DE_PRUEBAS.md   # Procedimiento de pruebas para evaluar la plataforma
+└── README.md
 ```
 
 ---
@@ -113,9 +116,9 @@ Desde el panel del SUPER_ADMIN se crean dueños (OWNER); cada dueño gestiona su
 - **Notificaciones**: correo SMTP y WhatsApp (34 plantillas aprobadas por Meta vía Twilio); recordatorios de pago programados, digest diario y reporte mensual.
 - **Chatbot WhatsApp e IA** (opcional): consulta de saldo, subida de comprobantes con OCR (Claude Vision) y validación CEP de Banxico.
 
-## Verificación rápida (smoke tests)
+## Cómo probar la plataforma
 
-En `scripts/` hay smoke tests por etapa (`etapa0-smoke.ps1` … `etapa2-smoke.ps1`) y en `qa-evidence/` se incluye la evidencia de las corridas de QA.
+El procedimiento de pruebas paso a paso (flujos funcionales, pruebas de seguridad y pruebas por API con `curl`) está en **[GUIA_DE_PRUEBAS.md](GUIA_DE_PRUEBAS.md)**. Adicionalmente, en `scripts/` hay smoke tests automatizados por etapa (`etapa0-smoke.ps1` … `etapa2-smoke.ps1`).
 
 ## Nota de seguridad sobre credenciales
 

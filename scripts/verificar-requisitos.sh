@@ -49,7 +49,7 @@ fi
 echo ""
 echo "Resultado: ${OK} OK, ${FAIL} pendiente(s)"
 if [[ ${FAIL} -gt 0 ]]; then
-  echo "Lee: COMO_CONFIGURAR_MERCADOPAGO.md"
+  echo "Lee: docs/COMO_CONFIGURAR_MERCADOPAGO.md"
   exit 1
 fi
 echo "Listo para arrancar backend y frontend."

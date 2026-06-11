@@ -1,9 +1,0 @@
-GET /api/agreements/mine returns 403 for OWNER (endpoint is TENANT-only). Expected.
-
-GET /api/agreements
-HTTP 200, array length 0.
-
-GET /api/agreements/pending
-HTTP 200, array length 0.
-
-RESULT: PASS (correct routes for owner; empty DB)

@@ -1,5 +1,0 @@
-Vite dev server reported: Local http://localhost:3000/
-
-Automated screenshot capture was not executed. Validate login and tabs manually; MFA will apply for owner-side roles per AuthService policy.
-
-RESULT: PARTIAL (service up; UI not visually captured)
