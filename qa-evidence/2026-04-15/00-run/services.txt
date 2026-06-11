@@ -1,0 +1,3 @@
+Backend: http://localhost:8080 (Spring Boot)
+Frontend: http://localhost:3000 (Vite dev)
+Database: PostgreSQL localhost:5432/propgest_db (per application.yml)

@@ -1,0 +1,40 @@
+Etapa 0 sigue BLOQUEADA_PROD por ENCRYPTION_KEY / validación prod-like de Etapa 0, pero no bloquea avance funcional de Etapas 1–5.
+
+================================================================================
+Etapa exacta: 1 — Identidad, contexto multi-dueño, SUPER_ADMIN, memberships, notificaciones, n8n opcional (corte 1)
+================================================================================
+
+STATUS_LOCAL_QA=YELLOW
+STATUS_PROD=BLOCKED_BY_STAGE0
+
+Bloqueos globales heredados
+---------------------------
+- Ver `qa-evidence/2026-04-15/BLOQUEOS_GLOBALES_PROD.txt` (encabezado: ENCRYPTION_KEY / Etapa 0 prod-like).
+
+Implementado en código
+----------------------
+- **N8n / gobierno:** `N8nNotificationAdapter.notifyOwnerCreated` ya no incluye `tempPassword` en el JSON enviado al webhook; solo `temporaryPasswordIssued` (boolean). Cumple política PLAN §1.4 (no secretos hacia n8n). Auditoría sigue redactando claves conocidas y añade defensa para `password` / `mfaSecret` en payload de audit.
+- **Permisos Etapa 1:** migración Flyway `V27__etapa1_property_admin_template.sql` — plantilla de sistema `tpl-property-admin-operational` con permisos sensibles mínimos del plan (QUOTE_*, EXPENSE_*, VACANCY_ROUTE, TEAM_MANAGE, PROPERTY_ARCHIVE_TENANT, REPORT_EXPORT). Asignación sigue siendo explícita por `PermissionGrantEntity` (no cambia comportamiento por defecto de PROPERTY_ADMIN sin grant).
+
+Validado en runtime
+-------------------
+- `mvn compile` del módulo backend (entorno agente).
+- **Pendiente en tu máquina:** `mvn flyway:migrate` o arranque con Flyway para aplicar V27; prueba manual `GET` plantillas de permisos si existe endpoint expuesto a SUPER_ADMIN.
+
+Pendiente (siguientes cortes Etapa 1)
+-------------------------------------
+- Reauth + MFA en rutas sensibles (purga owner, borrado inmueble con aprobación, permisos críticos) según PLAN §1.1.
+- `PropertyDeleteRequest` + flujo aprobación OWNER con MFA (PLAN §1.5).
+- Auditoría exhaustiva de otros callbacks hacia n8n (eventos prohibidos listados en PLAN §1.4).
+- Pruebas automatizadas o script dedicado para PROPERTY_ADMIN con `tpl-property-admin-operational`.
+
+Riesgos
+-------
+- Flujos n8n existentes que parseaban `tempPassword` dejarán de recibirlo: deben usar onboarding/app o canal seguro acordado.
+- La plantilla nueva no otorga permisos hasta que un SUPER_ADMIN/OWNER cree el grant; asignación incorrecta puede bloquear operación — documentar en UI/backend al asignar staff.
+
+Evidencia exacta
+----------------
+- Diff en: `backend/src/main/java/com/admindi/backend/service/N8nNotificationAdapter.java`
+- `backend/src/main/resources/db/migration/V27__etapa1_property_admin_template.sql`
+- Este archivo: `qa-evidence/2026-04-15/etapa-1/ENTREGA_ETAPA_1_CORTE1.txt`

@@ -1,0 +1,23 @@
+Pass 2 API - ACCOUNTANT (session assisted by user; JWT not stored in repo)
+
+Role: ACCOUNTANT (qa-accountant@etapa3.local). Owner org: 5cccf543-2a2a-4ba5-8e3b-518719079a7b.
+Property: b3f9b48b-130b-457f-90af-2973a840a3a1. Base URL: http://localhost:8080
+
+Endpoints exercised:
+- GET /api/properties/{propertyId}/timeline -> HTTP 200, JSON array length 6
+- GET /api/properties/{propertyId}/invoices -> HTTP 200, invoice etapa3-inv-001; propertyId matches; 10000/4000/6000 PARTIALLY_PAID
+- GET /api/properties/{propertyId}/reports/monthly?monthYear=2026-05 -> HTTP 200
+  expectedRent=10000.00 collected=4000.00 outstanding=6000.00 partialPaymentsCount=1 activeAgreements=1
+- GET /api/owner/accounting-summary?monthYear=2026-05 -> HTTP 200
+  expectedIncome=10000.00 collectedIncome=4000.00 outstandingIncome=6000.00 activeAgreementsCount=1; receivables includes etapa3-inv-001
+- GET /api/agreements -> HTTP 200, count 1
+- GET /api/ledger/org -> HTTP 200, count 1
+- GET /api/reports/monthly?monthYear=2026-05 -> HTTP 200, ZIP ~867 bytes (local run)
+- GET /api/reports/monthly/excel?monthYear=2026-05 -> HTTP 200, XLSX ~6276 bytes (local run)
+- GET /api/properties/{propertyId}/reports/annual?year=2026 -> HTTP 200
+  expectedAnnual=10000.00 collectedAnnual=4000.00 outstandingAnnual=6000.00 expensesAnnual=4000.00 agreementsHistoric=1
+  maintenanceTicketsYear=1 commercialActivitiesYear=1 monthsWithVacancy=1
+
+Cross-check (2026-05): property monthly expected/collected/outstanding match owner accounting summary (same figures as OWNER pass-2).
+
+RESULT: PASS for ACCOUNTANT read APIs + exports + numeric alignment with OWNER evidence.

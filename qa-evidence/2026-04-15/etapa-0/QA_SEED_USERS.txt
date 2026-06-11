@@ -1,0 +1,54 @@
+ADMINDI — Semilla QA Etapa 0 (copia alineada con scripts/QA_SEED_USERS_README.txt)
+==================================================================================
+
+IMPORTANTE
+----------
+- **READY_LOCAL_QA** ≠ **READY_PROD**. Local/QA verde no autoriza lenguaje de “etapa cerrada” en producción.
+- UUID en `QaEtapa0Constants` = documentación con **`strict-user-ids=true`**. Con **`strict-user-ids=false`** (default **local** y **qa**), los ids reales salen de la BD; ver warnings `[QA_SEED]` en arranque.
+
+Activación semilla
+------------------
+- Default `application.yml`: semilla off.
+- Perfiles `local` / `qa`: on salvo `ADMINDI_QA_SEED_ENABLED=false`.
+- `ADMINDI_QA_SEED_ENABLED=true` fuerza on (solo no prod).
+- **Prod:** `application-prod.yml` `qa-seed.enabled=false`; en runtime fijar `ADMINDI_QA_SEED_ENABLED=false` explícitamente.
+
+strict-user-ids
+---------------
+- `true`: email QA debe coincidir con UUID fijo de código → si no, fallo de arranque.
+- `false` (local/qa por defecto): adoptar id existente; rol incorrecto sigue fallando.
+
+SMOKE_CONTEXT_ID (tenant multi)
+-------------------------------
+**No** usar como verdad absoluta los UUID `e0e0…0001` / `e0e0…0002` del doc: en BD real suelen ser otros.
+
+Obtener el valor correcto:
+1) Respuesta de `POST /auth/login` (tenant multi): campo `organizations` → id del owner deseado; o  
+2) `GET /auth/contexts` con el Bearer adecuado.
+
+Propiedades sembradas: ids en log `[QA_SEED] Etapa 0 seed aplicado…` (JPA UUID).
+
+Credenciales / MFA QA (solo entornos controlados)
+--------------------------------------------------
+- Password común: ver `QaEtapa0Constants` / README en repo.
+- TOTP semilla Base32: `JBSWY3DPEHPK3PXP` (owners QA de semilla, staff, superadmin QA). `oathtool --totp -b JBSWY3DPEHPK3PXP`.
+- Smoke: `SMOKE_ARCHIVE_MFA_CODE` cuando el owner de archive exige MFA.
+
+Usuarios (resumen)
+------------------
+1) Superadmin MFA QA  
+2) Tenant multi (2 contextos owner)  
+3) Staff prop admin / accountant + MFA + grants  
+4) Escenario archivo: owner archive + tenant archive (`tenantProfileId` vía GET `/tenants` o script)
+
+Smoke
+-----
+`scripts/etapa0-smoke.ps1` — ver cabecera del script.
+
+Rate limit prod
+---------------
+`application-prod.yml`: login 5 intentos / 15 min.
+
+Checklist cierre prod
+---------------------
+Ver `ENTREGA_ETAPA_0_FINAL.txt` (sección checklist y veredicto).

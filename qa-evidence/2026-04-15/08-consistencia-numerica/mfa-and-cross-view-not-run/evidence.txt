@@ -1,0 +1,5 @@
+Cross-check (Owner summary vs Property detail vs accountant vs monthly/annual reports) requires authenticated sessions as OWNER and ACCOUNTANT and comparable month scope.
+
+MFA was not completed for those roles in this run. Local DB also lacks rich movement/payment history for a meaningful cross-check.
+
+RESULT: NOT VALIDATED

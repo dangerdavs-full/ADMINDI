@@ -1,0 +1,10 @@
+-- Query (PostgreSQL local propgest_db)
+SELECT COUNT(*) AS total_movements FROM property_movements;
+
+-- Result
+ total_movements 
+-----------------
+               0
+
+OBSERVATION: No timeline rows in local DB. Event-after-action scenarios (pago, convenio, archivo, ticket, vacancia) cannot be observed via API/DB without seeding flows or authenticated OWNER/ADMIN calls.
+RESULT: NOT VALIDATED (data + MFA on privileged roles)

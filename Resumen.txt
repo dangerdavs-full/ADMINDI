@@ -1,0 +1,1421 @@
+Resumen
+Implementar ADMINDI — Administración Inteligente de Inmuebles como proyecto greenfield con Java 21 + Spring Boot 3, React + TypeScript + Vite, PostgreSQL, Redis y almacenamiento S3-compatible.
+Tomar tu especificación nueva como fuente principal del producto; el plan anterior queda reemplazado.
+Alcance v1: SUPER_ADMIN, OWNER, PROPERTY_ADMIN, ACCOUNTANT, TENANT; REAL_ESTATE_AGENT y MAINTENANCE_PROVIDER quedan modelados desde ahora, pero sus portales completos pasan a fase 2.
+Integraciones v1: Mercado Pago real; WhatsApp y n8n mediante adapters/eventos y feature flags, priorizando primero los flujos web end-to-end.
+Usar admindi también como naming técnico base: branding, slug interno, issuer JWT, nombres de app y configuración.
+Cambios de Implementación
+1. Seguridad, contexto y permisos
+Autenticación con JWT RS256, refresh rotatorio, revocación por jti en Redis, MFA obligatorio para SUPER_ADMIN, OWNER, PROPERTY_ADMIN y ACCOUNTANT.
+Modelo de acceso por User + OwnerMembership + PermissionTemplate + PermissionGrant; PROPERTY_ADMIN y ACCOUNTANT soportan múltiples contextos de dueño.
+El ACCOUNTANT será multi-owner con selector de contexto igual al admin; dentro de cada owner ve todo el portafolio de ese dueño, no un subconjunto de inmuebles.
+RLS en PostgreSQL para todos los recursos con owner_id; SUPER_ADMIN usa bypass administrativo controlado.
+Reautenticación obligatoria para permisos destructivos, aprobación de convenios, borrados sensibles, cambios de permisos y exportaciones sensibles; todo queda auditado.
+2. Dominio y módulos v1
+Núcleo: Owner, User, Property, Unit, Tenant, Lease, PhotoAsset, LeaseDocument.
+Cobranza: Payment, PaymentAllocation, MonthlyLedger, PaymentAgreement, ChargeRule, LateFeeRule, MonthlySummary.
+Operación: MaintenanceContact, MaintenanceTicket, MaintenanceBudget, ExpenseCommitment, Vacancy, VacateRequest.
+Plataforma: AuditEvent, ActionToken, WebhookReceipt, OutboundEvent, RefreshTokenSession.
+Los contactos de mantenimiento y agentes inmobiliarios se modelan desde v1 para permitir asignaciones, historial y futura expansión de portales.
+3. Resumen mensual contable
+El MonthlySummary de v1 se define con base caja + compromisos: ingresos cobrados, ingresos pendientes, egresos pagados, egresos comprometidos, neto del mes, cuentas por cobrar y compromisos sin pagar.
+El resumen debe servir tanto al dueño como al contador, así que incluirá desglose por inmueble y por unidad, referencias de pago, método de pago, fechas, saldos, convenios activos y estatus de cobro.
+Se generarán dos salidas del mismo dataset:
+PDF: vista ejecutiva y legible para revisión mensual.
+Excel: vista contable operable con hojas separadas para Resumen, Ingresos, Cobranza pendiente, Egresos, Convenios y Facturación.
+El ACCOUNTANT y el OWNER podrán descargar PDF y Excel del resumen mensual; PROPERTY_ADMIN solo si tiene REPORT_EXPORT.
+El reporte de facturación sigue separado, pero conectado al resumen, con columnas suficientes para CFDI y trabajo contable mensual.
+4. APIs e interfaces públicas
+Mantener en v1: /auth/*, /admin/*, /owners/*, /permissions/*, /properties/*, /units/*, /leases/*, /tenants/*, /payments/*, /agreements/*, /maintenance/*, /vacancies/*, /reports/*, /files/*, /integrations/mercadopago/*, /integrations/whatsapp/webhook, /integrations/n8n/events.
+El JWT final conservará sub, type, ownerId, role, permissions, providerType, jti, iat, exp; BASE solo sirve para selección de contexto.
+Tipos públicos mínimos: MaintenanceFlowMode, MaintenanceCompensationModel, ExpenseStatus, PaymentStatus, AgreementStatus, LedgerStatus, UnitOccupancyStatus, VacancyStatus.
+Añadir contratos de exportación para reportes con parámetros por owner, mes, año, propertyId opcional, formato=pdf|xlsx.
+Usar naming técnico admindi en issuer JWT, claves de configuración, namespaces de backend/frontend y documentación base.
+5. Entrega por fases
+Fase 0: bootstrap del monorepo, CI, migraciones, auth base, RLS, auditoría y layout frontend.
+Fase 1: SUPER_ADMIN, alta de dueños, onboarding del dueño, permisos finos y selector de contexto.
+Fase 2: inmuebles, unidades, contratos, expedientes y vistas OWNER/PROPERTY_ADMIN.
+Fase 3: cobranza, MonthlyLedger, convenios, MonthlySummary, exportaciones PDF/Excel y portal ACCOUNTANT.
+Fase 4: portal TENANT, tickets, desocupación, mantenimiento y vacancias operadas por dueño/admin.
+Fase 5: endurecimiento de seguridad, webhooks/adapters reales, performance, pruebas E2E y salida a producción.
+Fase 2 posterior: portales completos de REAL_ESTATE_AGENT y MAINTENANCE_PROVIDER.
+Plan de Pruebas
+Seguridad: login, MFA, refresh rotation, blacklist de tokens, selector de contexto, rate limiting, headers y auditoría.
+Autorización: matriz completa por rol; ACCOUNTANT multi-owner con acceso total al owner actual y sin fuga entre dueños.
+Reportes: cálculo correcto de MonthlyLedger y MonthlySummary, vista caja + compromisos, exportación PDF/Excel y consistencia entre dashboard, resumen y facturación.
+Cobranza: pagos parciales, pagos por Mercado Pago, SPEI manual, convenios, saldos pendientes y reflejo en reportes.
+Operación: tickets, presupuestos, egresos comprometidos vs pagados, vacancias y overrides por inmueble.
+E2E v1: SUPER_ADMIN -> OWNER onboarding -> alta inmueble/unidad/contrato -> TENANT paga -> OWNER valida -> ACCOUNTANT descarga resumen y reporte de facturación.
+Supuestos y Defaults
+El workspace actual está vacío, así que no hay restricciones heredadas de implementación previa.
+ACCOUNTANT es multi-owner y siempre entra a un contexto de dueño; dentro de ese contexto ve todos los inmuebles del owner.
+La base contable del resumen en v1 será caja + compromisos, no devengado puro.
+Mercado Pago será la única pasarela real en v1; WhatsApp y n8n quedan listos por adapters/eventos para activación progresiva.
+Los borrados sensibles serán soft delete salvo políticas futuras explícitas de purga.
+
+
+# PropGest — Especificación Completa de la Aplicación Web
+
+## Índice
+
+1. Arquitectura de seguridad y tokens
+2. SUPER_ADMIN — Pantallas y flujos
+3. OWNER (Dueño) — Pantallas y flujos
+4. PROPERTY_ADMIN (Administrador) — Pantallas y flujos
+5. ACCOUNTANT (Contador) — Pantallas y flujos
+6. TENANT (Arrendatario) — Pantallas y flujos
+7. REAL_ESTATE_AGENT (Agente inmobiliario) — Pantallas y flujos
+8. MAINTENANCE_PROVIDER (Agente de mantenimiento) — Pantallas y flujos
+9. Reporte mensual — Estructura completa
+10. Validaciones de seguridad por endpoint
+
+---
+
+# 1. ARQUITECTURA DE SEGURIDAD Y TOKENS
+
+## Flujo de autenticación universal
+
+```
+TODOS los roles siguen el mismo flujo:
+
+[Login] → [Verificar credenciales + MFA] → [¿Múltiples contextos?]
+                                                │
+                                    ┌───────────┼──────────────┐
+                                    │           │              │
+                                 0 contextos  1 contexto    2+ contextos
+                                    │           │              │
+                                  Error       Token          Selector
+                                 "Sin        completo       de contexto
+                                  acceso"    directo            │
+                                                           Selecciona
+                                                               │
+                                                           Token completo
+```
+
+## Estructura del JWT
+
+```json
+{
+  "sub": "user_uuid",
+  "type": "FULL",
+  "ownerId": "owner_uuid",
+  "role": "PROPERTY_ADMIN",
+  "permissions": ["PROPERTY_VIEW", "PAYMENT_VIEW", "PAYMENT_APPLY"],
+  "providerType": null,
+  "iss": "propgest",
+  "aud": "propgest-api",
+  "jti": "unique-id",
+  "iat": 1710000060,
+  "exp": 1710000960
+}
+```
+
+**Variantes por rol:**
+
+| Rol | ownerId | permissions | providerType | Notas |
+|-----|---------|-------------|--------------|-------|
+| SUPER_ADMIN | null | ["*"] | null | Acceso global, bypass RLS |
+| OWNER | su propio UUID | ["*"] (todos sobre sus datos) | null | Solo ve lo suyo |
+| PROPERTY_ADMIN | UUID del dueño | según plantilla + finos | null | Puede tener múltiples contextos |
+| ACCOUNTANT | UUID del dueño | ["REPORT_VIEW", "PAYMENT_VIEW", "REPORT_EXPORT"] | null | Solo lectura financiera |
+| TENANT | UUID del dueño | ["LEASE_VIEW_OWN", "PAYMENT_CREATE_OWN", "TICKET_CREATE"] | null | Solo su contrato |
+| REAL_ESTATE_AGENT | UUID del dueño | ["VACANCY_VIEW", "VACANCY_UPDATE"] | REAL_ESTATE_AGENT | Puede tener múltiples contextos |
+| MAINTENANCE_PROVIDER | UUID del dueño | ["TICKET_VIEW_ASSIGNED", "BUDGET_CREATE"] | MAINTENANCE | Puede tener múltiples contextos |
+
+## Validaciones de token en CADA request
+
+```java
+// JwtAuthenticationFilter.java — se ejecuta en CADA request
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, ...) {
+        
+        String token = extractToken(req);
+        if (token == null) { chain.doFilter(req, res); return; }
+
+        // 1. Verificar firma RS256
+        Claims claims = jwtParser.parseSignedClaims(token).getPayload();
+
+        // 2. Verificar expiración (automático con jjwt)
+
+        // 3. Verificar que el jti NO está en la blacklist de Redis
+        if (revokedTokens.exists("revoked:" + claims.getId())) {
+            throw new TokenRevokedException();
+        }
+
+        // 4. Verificar tipo de token
+        String tokenType = claims.get("type", String.class);
+        String requestPath = req.getRequestURI();
+
+        if ("BASE".equals(tokenType)) {
+            // Token base SOLO puede acceder a:
+            // - GET /api/auth/contexts
+            // - POST /api/auth/select-context
+            if (!isContextSelectionEndpoint(requestPath)) {
+                throw new ContextRequiredException();
+            }
+        }
+
+        // 5. Establecer contexto del tenant para RLS
+        String ownerId = claims.get("ownerId", String.class);
+        if (ownerId != null) {
+            TenantContext.setCurrentOwner(UUID.fromString(ownerId));
+        }
+
+        // 6. Establecer autenticación en SecurityContext
+        var auth = new JwtAuthentication(claims);
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        chain.doFilter(req, res);
+    }
+}
+```
+
+```java
+// TenantConnectionInterceptor.java — ANTES de cada query SQL
+public class TenantConnectionInterceptor implements StatementInspector {
+    
+    @Override
+    public String inspect(String sql) {
+        UUID ownerId = TenantContext.getCurrentOwner();
+        if (ownerId != null) {
+            // Ejecutar SET antes de cada query
+            jdbcTemplate.execute(
+                "SET app.current_owner = '" + ownerId + "'"
+            );
+        }
+        return sql;
+    }
+}
+```
+
+## Validación de permisos en cada endpoint
+
+```java
+// Ejemplo: solo quien tenga PAYMENT_APPLY puede aplicar pagos
+@PostMapping("/payments/{id}/apply")
+@PreAuthorize("hasPermission('PAYMENT_APPLY')")
+public ResponseEntity<?> applyPayment(@PathVariable UUID id) {
+    // Además de tener el permiso, verificar que el payment
+    // pertenece al owner del token (RLS lo hace automáticamente,
+    // pero verificamos explícitamente como doble capa)
+    Payment payment = paymentService.findById(id);
+    // Si RLS está bien configurado, esta query solo retorna
+    // payments del owner actual. Si retorna null → 404.
+}
+```
+
+## Protección adicional por tipo de operación
+
+```
+LECTURA (GET):
+  → Token válido + permiso de VIEW + RLS filtra datos
+
+ESCRITURA (POST/PUT):
+  → Token válido + permiso específico + RLS + validación de DTO
+
+ELIMINACIÓN (DELETE):
+  → Token válido + permiso de DELETE + reautenticación + audit log
+
+OPERACIÓN SENSIBLE (cambio de permisos, eliminación de expediente):
+  → Token válido + permiso + reautenticación + confirmación MFA + audit log
+```
+
+## Action tokens (links de WhatsApp)
+
+```java
+// Validación cuando un proveedor abre un link de WhatsApp
+@GetMapping("/actions/preview/{token}")
+public ResponseEntity<?> previewAction(@PathVariable String token) {
+    ActionToken at = actionTokenService.findByToken(token);
+    
+    // 1. ¿Existe?
+    if (at == null) throw new NotFoundException();
+    
+    // 2. ¿Expiró?
+    if (at.getExpiresAt().isBefore(now())) throw new TokenExpiredException();
+    
+    // 3. ¿Ya fue usado?
+    if (at.getStatus() == ACCEPTED || at.getStatus() == REJECTED)
+        throw new TokenAlreadyUsedException();
+    
+    // 4. Registrar visualización
+    at.setViewedAt(now());
+    at.setStatus(VIEWED);
+    
+    // 5. Retornar info mínima SIN datos sensibles
+    return ok(ActionPreviewDTO.from(at)); // solo tipo, inmueble, descripción
+}
+
+@PostMapping("/actions/respond/{token}")
+@PreAuthorize("isAuthenticated()") // DEBE estar logueado
+public ResponseEntity<?> respondToAction(
+    @PathVariable String token,
+    @Valid @RequestBody ActionResponseRequest req,
+    @AuthenticationPrincipal JwtUser user,
+    HttpServletRequest httpReq
+) {
+    ActionToken at = actionTokenService.findByToken(token);
+    
+    // Todas las validaciones anteriores +
+    // 6. ¿El usuario autenticado es el destinatario del token?
+    if (!at.getRecipientUserId().equals(user.getId()))
+        throw new UnauthorizedException("Este link no es para ti");
+    
+    // 7. Registrar respuesta con auditoría completa
+    at.setRespondedAt(now());
+    at.setStatus(req.accepted() ? ACCEPTED : REJECTED);
+    at.setResponseNotes(req.notes());
+    at.setIpAddress(getClientIp(httpReq));
+    at.setUserAgent(httpReq.getHeader("User-Agent"));
+    
+    // 8. Disparar notificaciones al dueño
+    notificationService.notifyOwner(at);
+}
+```
+
+## Rate limiting por endpoint
+
+```
+POST /api/auth/login              → 5 req / 15 min por IP
+POST /api/auth/select-context     → 10 req / min por usuario
+POST /api/auth/refresh            → 10 req / min por usuario
+POST /api/payments/**             → 30 req / min por usuario
+POST /api/webhooks/whatsapp       → 100 req / min por IP
+POST /api/webhooks/mercadopago    → 100 req / min por IP
+GET  /api/** (lectura general)    → 200 req / min por usuario
+POST /api/** (escritura general)  → 60 req / min por usuario
+DELETE /api/**                    → 10 req / min por usuario
+```
+
+---
+
+# 2. SUPER_ADMIN
+
+## Acceso
+- Login con email + contraseña + MFA obligatorio.
+- NO selecciona contexto (acceso global).
+- JWT con `ownerId: null`, `role: SUPER_ADMIN`.
+- Usa usuario de BD separado con `BYPASSRLS` para queries administrativas.
+- Bootstrap desde secretos de despliegue, nunca hardcodeado.
+
+## Pantallas
+
+### 2.1 Dashboard SUPER_ADMIN
+```
+Métricas globales de la plataforma:
+├── Total de dueños activos
+├── Total de inmuebles
+├── Total de unidades (ocupadas / vacantes / en proceso)
+├── Total de inquilinos activos
+├── Total de pagos del mes (monto + cantidad)
+├── Pagos pendientes del mes
+├── Tickets de mantenimiento abiertos
+├── Vacancias activas
+└── Alertas del sistema (errores de webhook, tokens expirados, etc.)
+```
+
+### 2.2 Gestión de Dueños (CRUD completo)
+```
+/admin/owners
+
+Lista de dueños:
+├── Nombre / Razón social
+├── RFC
+├── Teléfono
+├── Email
+├── # Inmuebles
+├── # Unidades
+├── Estado (activo/inactivo)
+├── Fecha de alta
+└── Acciones: [Ver] [Editar] [Desactivar ⚠️]
+
+Crear dueño: formulario con todos los datos.
+Al crear → se ejecuta el onboarding automático (oferta de servicios).
+Editar: todos los campos excepto UUID.
+Desactivar: soft delete, requiere reautenticación, audit log.
+SUPER_ADMIN puede crear otros SUPER_ADMIN.
+```
+
+### 2.3 Proveedores de Plataforma
+```
+/admin/platform-providers
+
+Dos tabs: [Mantenimiento] [Agentes Inmobiliarios]
+
+Para cada proveedor:
+├── Nombre
+├── Teléfono (WhatsApp)
+├── Email
+├── Empresa
+├── Modelo de compensación
+├── Estado (activo/inactivo)
+├── # Dueños que lo usan
+├── Métricas: tickets atendidos, tiempo promedio, calificación
+└── Acciones: [Ver expediente] [Editar] [Desactivar]
+
+Crear proveedor: formulario + el sistema le envía WhatsApp de bienvenida
+con link para crear su cuenta en PropGest.
+```
+
+### 2.4 Auditoría Global
+```
+/admin/audit
+
+Filtros: fecha, tipo de evento, actor, dueño, recurso
+Eventos: login, cambio de rol, eliminación, aprobación de pago,
+         reset de contraseña, cambio de permisos, eliminación de expediente,
+         acceso a PII, exportación de datos.
+
+Cada registro:
+├── Timestamp
+├── Actor (quién)
+├── Evento (qué)
+├── Recurso (sobre qué)
+├── Detalles (valores anteriores / nuevos)
+├── IP
+├── User Agent
+└── Request ID
+```
+
+### 2.5 Gestión de Usuarios Global
+```
+/admin/users
+
+Buscar usuarios por nombre, email, teléfono, RFC.
+Ver todos los contextos de un usuario.
+Resetear contraseña (genera link temporal, audit log).
+Desactivar usuario.
+Ver historial de login (IPs, dispositivos, intentos fallidos).
+```
+
+### 2.6 Configuración del Sistema
+```
+/admin/settings
+
+├── Configuración de WhatsApp Cloud API (App ID, App Secret, tokens)
+├── Configuración de Mercado Pago (webhook secret)
+├── Configuración de n8n (URL, API key)
+├── Configuración de S3 (bucket, credenciales)
+├── Configuración de email (SMTP)
+├── Plantillas de mensajes WhatsApp
+├── Plantillas de permisos por rol
+└── Parámetros globales (días de gracia default, % recargo default, etc.)
+```
+
+---
+
+# 3. OWNER (Dueño)
+
+## Acceso
+- Login con email + contraseña + MFA obligatorio.
+- Si tiene 1 solo perfil → token completo directo.
+- JWT con `ownerId: su UUID`, `role: OWNER`.
+- Puede ver y hacer todo sobre sus propios datos.
+- NO puede ver datos de otros dueños.
+
+## Primera vez: Onboarding
+
+```
+Pantalla de bienvenida (solo aparece una vez):
+1. "¿Quieres usar nuestros servicios de mantenimiento?"
+   ○ Sí, usar los de la plataforma
+   ○ No, usaré los míos
+   ○ Ambos
+   ○ Decidir después
+
+2. "¿Quieres usar nuestros agentes inmobiliarios?"
+   ○ Sí, usar los de la plataforma
+   ○ No, usaré los míos
+   ○ Ambos
+   ○ Decidir después
+
+3. "Registra tu primer inmueble" → formulario guiado
+
+Puede saltar pasos y completarlos después.
+Los servicios de plataforma quedan disponibles pero inactivos si elige "después".
+Puede cambiarlos en Configuración > Servicios en cualquier momento.
+```
+
+## Pantallas
+
+### 3.1 Dashboard del Dueño
+```
+/dashboard
+
+Resumen financiero del mes actual:
+├── Ingresos cobrados (renta + cargos extra)
+├── Ingresos pendientes (rentas sin pagar)
+├── Egresos pagados (mantenimiento, servicios)
+├── Egresos comprometidos (presupuestos aprobados sin pagar)
+├── Resultado neto del mes
+└── Gráfica: ingresos vs egresos últimos 6 meses
+
+Estado de unidades:
+├── X ocupadas (verde)
+├── X vacantes (rojo)
+├── X en proceso de desocupación (amarillo)
+├── X en búsqueda de inquilino (azul)
+└── Mapa visual o grid de todas las unidades con estado por color
+
+Alertas y acciones pendientes:
+├── "3 pagos pendientes de validar"
+├── "1 solicitud de convenio por revisar"
+├── "1 presupuesto de mantenimiento por aprobar"
+├── "1 solicitud de desocupación nueva"
+└── "Depto 4B lleva 15 días vacante"
+```
+
+### 3.2 Mis Inmuebles
+```
+/properties
+
+Lista de inmuebles:
+├── Nombre / Dirección
+├── Tipo (edificio, casa, local, bodega)
+├── # Unidades (ocupadas/vacantes)
+├── Ingreso mensual total
+├── Cuenta predial
+├── Galería de fotos (thumbnail)
+└── Acciones: [Ver unidades] [Editar] [Fotos] [Eliminar ⚠️]
+
+Crear inmueble:
+├── Nombre *
+├── Dirección completa *
+├── Tipo *
+├── Cuenta predial *
+├── Descripción
+├── Fotos (galería con categorías)
+└── Notas
+```
+
+### 3.3 Unidades
+```
+/properties/{id}/units
+
+Por cada unidad:
+├── Número/Nombre (ej: "Depto 4B")
+├── Estado: OCCUPIED / VACANT / VACATING / VACANCY_LISTED
+├── Inquilino actual (si aplica)
+├── Renta mensual
+├── Último pago
+├── Fotos (galería propia de la unidad)
+├── Acciones: [Ver contrato] [Ver expediente] [Fotos]
+└── Si VACANT: [Registrar nuevo inquilino]
+
+Crear unidad:
+├── Número/Nombre *
+├── Tipo (departamento, local, oficina, bodega, casa)
+├── m² 
+├── Recámaras / Baños
+├── Piso
+├── Características (checkboxes: estacionamiento, bodega, terraza, etc.)
+├── Fotos con categorías
+└── Notas
+```
+
+### 3.4 Contratos
+```
+/leases
+
+Lista de contratos activos:
+├── Unidad
+├── Inquilino
+├── Fecha inicio — fin
+├── Renta mensual
+├── Estado del mes (pagado, parcial, pendiente, vencido)
+├── Estado del contrato (ACTIVE, TERMINATED, DELETED)
+└── Acciones: [Ver expediente] [Ver contrato PDF]
+
+Crear contrato (= registrar nuevo inquilino):
+├── Formulario de inquilino (o seleccionar existente)
+├── Formulario de contrato (todos los datos operativos)
+├── Subida de contrato PDF
+└── Al guardar: unidad → OCCUPIED, empieza cobranza
+
+Inquilinos anteriores (por unidad):
+├── Lista de contratos terminados
+├── Período, total pagado, estado final
+├── [Ver expediente archivado]
+└── [Eliminar expediente ⚠️] (reautenticación + MFA)
+```
+
+### 3.5 Cobranza
+```
+/payments
+
+Vista del mes actual:
+├── Tabla con todos los contratos:
+│   ├── Inquilino
+│   ├── Unidad
+│   ├── Monto esperado
+│   ├── Monto pagado
+│   ├── Saldo pendiente
+│   ├── Estado: ✅ Pagado / ⏳ Parcial / ❌ Pendiente / 🔴 Vencido
+│   ├── Método de pago
+│   └── Acciones: [Ver detalle] [Aplicar pago manual]
+└── Filtros: mes, inmueble, estado
+
+Pagos pendientes de validar:
+├── Comprobantes SPEI recibidos por WhatsApp
+├── Foto del comprobante
+├── Datos extraídos por IA (monto, fecha, referencia)
+├── Resultado de validación CEP
+└── Acciones: [Aprobar] [Rechazar] [Pedir más datos]
+```
+
+### 3.6 Convenios de Pago
+```
+/agreements
+
+Lista de convenios:
+├── Inquilino
+├── Tipo (mover fecha, parcialidades, descuento)
+├── Estado (solicitado, pendiente aprobación, aprobado, activo, cumplido, incumplido)
+├── Monto original vs monto pactado
+└── Acciones: [Aprobar] [Rechazar] [Ver detalle]
+
+Solo OWNER y PROPERTY_ADMIN con permiso pueden aprobar/rechazar.
+La aprobación se hace en el portal, NUNCA por WhatsApp libre.
+```
+
+### 3.7 Mantenimiento
+```
+/maintenance
+
+Tickets abiertos:
+├── # Ticket
+├── Unidad
+├── Inquilino que reportó
+├── Descripción
+├── Proveedor asignado
+├── Estado: NUEVO → ASIGNADO → PRESUPUESTO → APROBADO → EN PROGRESO → COMPLETADO
+├── Presupuesto (si hay)
+├── Fotos
+└── Acciones: [Ver detalle] [Aprobar presupuesto] [Rechazar]
+
+Expediente del proveedor (por cada proveedor):
+├── Métricas: tickets, tiempo respuesta, tasa aceptación, calificación
+├── Historial de trabajos
+├── Historial financiero (pagado, pendiente)
+└── Acciones: [Desactivar proveedor]
+```
+
+### 3.8 Vacancias
+```
+/vacancies
+
+Unidades vacantes:
+├── Unidad
+├── Días vacante
+├── Agente asignado (si hay)
+├── Estado: NOTIFIED / ACCEPTED / ACTIVE / RENTED
+├── Últimas actualizaciones del agente
+└── Acciones: [Ver detalle] [Reasignar agente] [Cancelar]
+```
+
+### 3.9 Reportes
+```
+/reports
+
+Reporte mensual por inmueble (MonthlySummary):
+├── Selector de mes/año
+├── Selector de inmueble (o todos)
+├── Tabla:
+│   ├── Ingresos cobrados
+│   ├── Ingresos pendientes
+│   ├── Egresos pagados
+│   ├── Egresos comprometidos
+│   ├── Convenios activos
+│   ├── Resultado neto
+│   └── Desglose por unidad
+├── Gráfica: ingresos vs egresos
+├── Comparativo mes anterior
+└── [Exportar Excel] [Exportar PDF]
+
+Reporte de facturación para contador:
+├── Selector de mes
+├── Tabla con datos para CFDI:
+│   ├── Inquilino (nombre, RFC)
+│   ├── Monto cobrado
+│   ├── Método PUE o PPD
+│   ├── Forma de pago (transferencia, Mercado Pago, efectivo)
+│   ├── Fecha de pago
+│   ├── Cuenta predial
+│   └── Clave SAT: 80131500
+└── [Exportar Excel para el contador]
+```
+
+### 3.10 Configuración del Dueño
+```
+/settings
+
+Mi perfil:
+├── Nombre / Razón social (editable)
+├── RFC (editable)
+├── Teléfono (editable)
+├── Email (editable)
+├── Contraseña (cambiar)
+└── MFA (configurar/reconfiguar)
+
+Servicios:
+├── Mantenimiento: [Plataforma] [Mis proveedores] [Mixto]
+│   └── Lista de mis proveedores propios (CRUD)
+├── Agentes inmobiliarios: [Plataforma] [Mis agentes] [Mixto] [Ninguno]
+│   └── Lista de mis agentes propios (CRUD)
+└── Los proveedores de plataforma se muestran como "disponibles" para activar/desactivar
+
+Administradores (mis empleados):
+├── Lista de PROPERTY_ADMIN asignados
+├── Plantilla de permisos de cada uno
+├── Permisos finos (override de plantilla)
+├── Cada permiso muestra: qué permite, ventaja, riesgo, impacto
+├── Para permisos destructivos: reautenticación + advertencia de riesgo
+└── [Agregar admin] [Editar permisos] [Revocar acceso]
+
+Contadores:
+├── Lista de ACCOUNTANT asignados
+├── Permisos de lectura (qué reportes puede ver)
+└── [Agregar contador] [Revocar acceso]
+
+Configuración de cobranza:
+├── Días de gracia (default por inmueble)
+├── Recargo: tipo (fijo/%), monto, a partir de qué día
+├── Frecuencia de recordatorios WhatsApp
+├── Cuenta de Mercado Pago (conectar/desconectar)
+└── Configuración de escalamiento (días y acciones por nivel)
+
+Configuración por inmueble (overrides):
+├── Seleccionar inmueble
+├── Override de flujo de mantenimiento
+├── Override de flujo de vacancia
+├── Override de recargos
+└── Override de agente/proveedor específico
+```
+
+### 3.11 Gestión de Permisos para Administradores
+```
+/settings/admins/{id}/permissions
+
+Plantillas disponibles:
+├── Administrador Operativo (gestión diaria, sin financiero sensible)
+├── Administrador de Cobranza (pagos, convenios, reportes)
+├── Administrador Completo (todo excepto eliminar inmuebles/expedientes)
+└── Personalizado
+
+Permisos finos (cada uno con explicación de riesgo):
+┌────────────────────────┬──────────────────────────────────────────┬───────┐
+│ Permiso                │ Qué permite                              │ Riesgo│
+├────────────────────────┼──────────────────────────────────────────┼───────┤
+│ PROPERTY_CREATE        │ Crear inmuebles                          │ Bajo  │
+│ PROPERTY_UPDATE        │ Editar datos de inmuebles                │ Bajo  │
+│ PROPERTY_DELETE        │ Eliminar inmuebles y todo su contenido   │ ALTO  │
+│ UNIT_CREATE            │ Crear unidades                           │ Bajo  │
+│ UNIT_UPDATE            │ Editar unidades                          │ Bajo  │
+│ UNIT_DELETE            │ Eliminar unidades                        │ ALTO  │
+│ TENANT_CREATE          │ Dar de alta inquilinos                   │ Medio │
+│ TENANT_UPDATE          │ Editar datos de inquilinos               │ Medio │
+│ TENANT_DELETE          │ Eliminar inquilinos                      │ ALTO  │
+│ LEASE_CREATE           │ Crear contratos                          │ Medio │
+│ LEASE_UPDATE           │ Modificar datos del contrato             │ Medio │
+│ LEASE_TERMINATE        │ Terminar contrato activo                 │ ALTO  │
+│ PAYMENT_VIEW           │ Ver pagos y estados                      │ Bajo  │
+│ PAYMENT_REVIEW         │ Revisar comprobantes SPEI                │ Medio │
+│ PAYMENT_APPLY          │ Aplicar pagos al expediente              │ Medio │
+│ AGREEMENT_VIEW         │ Ver convenios                            │ Bajo  │
+│ AGREEMENT_APPROVE      │ Aprobar convenios                        │ Medio │
+│ AGREEMENT_REJECT       │ Rechazar convenios                       │ Bajo  │
+│ EXPENSE_VIEW           │ Ver egresos y presupuestos               │ Bajo  │
+│ EXPENSE_APPROVE        │ Aprobar presupuestos de mantenimiento    │ Medio │
+│ EXPENSE_MARK_PAID      │ Marcar egreso como pagado                │ Medio │
+│ REPORT_VIEW            │ Ver reportes financieros                 │ Bajo  │
+│ REPORT_EXPORT          │ Exportar reportes a Excel/PDF            │ Bajo  │
+│ PROVIDER_MANAGE        │ Agregar/editar proveedores propios       │ Bajo  │
+│ VACANCY_MANAGE         │ Gestionar vacancias y agentes            │ Medio │
+│ EXPEDIENT_DELETE       │ Eliminar expedientes de inquilinos ant.  │ ALTO  │
+└────────────────────────┴──────────────────────────────────────────┴───────┘
+
+Para permisos marcados ALTO:
+→ El dueño debe reautenticarse (contraseña + MFA)
+→ Se muestra advertencia: "Este permiso permite eliminar datos permanentemente.
+   Los datos eliminados no se pueden recuperar."
+→ Se registra en audit log quién otorgó el permiso, cuándo y desde qué IP.
+```
+
+---
+
+# 4. PROPERTY_ADMIN (Administrador de Inmuebles)
+
+## Acceso
+- Login con email + contraseña + MFA obligatorio.
+- Si trabaja para múltiples dueños → selector de contexto.
+- JWT con `ownerId` del dueño seleccionado, `role: PROPERTY_ADMIN`, `permissions` según plantilla.
+- Solo ve datos del dueño seleccionado.
+- Puede cambiar de contexto desde el navbar sin re-login.
+
+## Pantallas
+
+**Ve las MISMAS pantallas que el OWNER**, pero filtradas por sus permisos:
+
+```
+Si tiene PAYMENT_VIEW pero NO PAYMENT_APPLY:
+→ Ve la tabla de pagos pero NO tiene botón "Aplicar pago"
+
+Si tiene EXPENSE_VIEW pero NO EXPENSE_APPROVE:
+→ Ve los presupuestos pero NO puede aprobarlos
+
+Si NO tiene REPORT_EXPORT:
+→ Ve los reportes pero NO tiene botón "Exportar Excel"
+
+Si NO tiene PROPERTY_DELETE:
+→ NO ve el botón "Eliminar inmueble"
+
+Si NO tiene EXPEDIENT_DELETE:
+→ NO ve el botón "Eliminar expediente"
+```
+
+**Pantallas que NO ve el admin:**
+- Configuración de permisos de otros admins (solo el dueño).
+- Configuración de servicios de plataforma (solo el dueño).
+- Datos personales del dueño (RFC, datos bancarios).
+
+**Navbar muestra:**
+```
+PropGest  [🏢 Grupo López ▾]  🔔 3  👤 Carlos (Admin)
+          ── cambiar contexto ──
+```
+
+---
+
+# 5. ACCOUNTANT (Contador)
+
+## Acceso
+- Login con email + contraseña + MFA obligatorio.
+- Si trabaja para múltiples dueños → selector de contexto.
+- JWT con `role: ACCOUNTANT`, permisos de SOLO LECTURA financiera.
+- NO puede modificar nada, solo ver y exportar.
+
+## Pantallas
+
+### 5.1 Dashboard del Contador
+```
+/dashboard
+
+Resumen financiero del mes:
+├── Ingresos cobrados
+├── Ingresos pendientes
+├── Egresos pagados
+├── Resultado neto
+└── Alertas: "5 pagos sin CFDI generado"
+```
+
+### 5.2 Reporte de Facturación (su pantalla principal)
+```
+/reports/billing
+
+Tabla con TODOS los datos que necesita para facturar:
+├── Mes seleccionado
+├── Por cada pago recibido:
+│   ├── Fecha de pago
+│   ├── Inquilino (nombre, RFC)
+│   ├── Inmueble + cuenta predial
+│   ├── Monto cobrado (renta + extras)
+│   ├── Método de pago: PUE o PPD
+│   ├── Forma de pago: transferencia (03), efectivo (01), tarjeta (04)
+│   ├── Referencia de pago
+│   ├── Clave SAT: 80131500
+│   ├── ¿Requiere retención ISR? (si inquilino es persona moral)
+│   └── Estado de CFDI: ⬜ Sin facturar / ✅ Facturado (futuro)
+└── [Exportar Excel] [Exportar PDF]
+
+Notas para el contador:
+├── "Vivienda sin amueblar: exenta de IVA"
+├── "Vivienda amueblada: IVA 16%"
+├── "Local comercial: IVA 16%"
+├── "Si arrendatario es persona moral: retención 2/3 IVA + 10% ISR"
+```
+
+### 5.3 Reporte Mensual por Inmueble
+```
+/reports/monthly-summary
+
+Mismo reporte que ve el dueño pero solo lectura.
+Puede exportar a Excel/PDF.
+```
+
+### 5.4 Historial de Pagos
+```
+/reports/payments
+
+Filtros: mes, inmueble, inquilino, método de pago, estado
+Tabla con todos los pagos detallados.
+Solo lectura.
+```
+
+**El contador NO ve:**
+- Tickets de mantenimiento (detalles operativos).
+- Mensajes de WhatsApp.
+- Datos personales de inquilinos más allá de nombre y RFC.
+- Fotos de inmuebles.
+- Configuración de ningún tipo.
+
+---
+
+# 6. TENANT (Arrendatario / Inquilino)
+
+## Acceso
+- Login con email + contraseña. MFA recomendado pero no obligatorio.
+- Si renta en múltiples lugares → selector de contexto por inmueble.
+- JWT con `role: TENANT`, permisos limitados a su contrato.
+- Solo ve sus propios datos. RLS + filtro por `tenant_id`.
+
+## Pantallas
+
+### 6.1 Dashboard del Inquilino
+```
+/dashboard
+
+Estado de mi renta:
+├── Monto del mes: $12,000
+├── Estado: ✅ Pagado / ⏳ Pendiente / 🔴 Vencido
+├── Fecha límite de pago: día 5
+├── Recargo aplicado: $0 (o monto si aplica)
+├── Saldo pendiente: $0
+└── [Pagar ahora] → abre Mercado Pago Checkout Pro
+
+Historial de pagos (últimos 6 meses):
+├── Mes
+├── Monto pagado
+├── Fecha de pago
+├── Método
+└── Estado
+
+Mi contrato:
+├── Fecha inicio — fin
+├── Renta mensual
+├── Depósito
+├── [Ver contrato PDF]
+└── Datos del administrador (nombre, teléfono)
+```
+
+### 6.2 Mis Pagos
+```
+/payments
+
+Historial completo de pagos:
+├── Filtro por mes/año
+├── Cada pago: fecha, monto, método, referencia, estado
+└── [Enviar comprobante SPEI] → WhatsApp (o subir en portal)
+
+Pagar ahora:
+└── Botón → Mercado Pago Checkout Pro embebido
+```
+
+### 6.3 Mantenimiento
+```
+/maintenance
+
+Mis tickets:
+├── # Ticket
+├── Descripción
+├── Estado: NUEVO → ASIGNADO → EN PROGRESO → COMPLETADO
+├── Fecha de reporte
+├── Fotos
+└── Acciones: [Nuevo ticket]
+
+Crear ticket:
+├── Categoría (plomería, electricidad, pintura, cerrajería, otro)
+├── Descripción *
+├── Urgencia (baja, media, alta)
+├── Fotos (subir o por WhatsApp)
+└── [Enviar]
+```
+
+### 6.4 Convenio de Pago
+```
+/agreements
+
+Si tiene convenio activo:
+├── Tipo de convenio
+├── Condiciones
+├── Estado
+├── Próximo pago
+└── Historial de pagos del convenio
+
+Solicitar convenio:
+├── Tipo: mover fecha / parcialidades / descuento
+├── Motivo
+├── Propuesta (nueva fecha, # parcialidades, monto propuesto)
+└── [Enviar solicitud]
+```
+
+### 6.5 Desocupación
+```
+/vacate
+
+Si NO tiene proceso activo:
+└── [Solicitar desocupación] → confirma y crea VacateRequest
+
+Si tiene proceso activo:
+├── Estado del proceso
+├── Checklist: qué falta por hacer
+├── Fecha tentativa de salida
+├── Desglose de depósito (cuando esté disponible)
+└── Saldo final
+```
+
+### 6.6 Mi Perfil
+```
+/profile
+
+├── Nombre (editable)
+├── Teléfono (editable)
+├── Email (editable)
+├── RFC (editable — para facturación)
+├── Contraseña (cambiar)
+├── MFA (configurar)
+└── [Exportar mis datos] → JSON/PDF (derecho ARCO: Acceso)
+    [Solicitar eliminación] → ARCO: Cancelación
+```
+
+**El inquilino NO ve:**
+- Datos de otros inquilinos.
+- Reportes financieros del dueño.
+- Presupuestos de mantenimiento (montos).
+- Configuración del inmueble.
+- Datos del proveedor de mantenimiento.
+
+---
+
+# 7. REAL_ESTATE_AGENT (Agente Inmobiliario)
+
+## Acceso
+- Login con email + contraseña. MFA recomendado.
+- Si trabaja para múltiples dueños → selector de contexto.
+- JWT con `role: REAL_ESTATE_AGENT`, `providerType: REAL_ESTATE_AGENT`.
+- Solo ve vacancias asignadas a él.
+
+## Pantallas
+
+### 7.1 Dashboard del Agente
+```
+/dashboard
+
+Mis vacancias activas:
+├── Total de vacancias asignadas
+├── Aceptadas / pendientes de respuesta
+├── Días promedio para rentar
+└── Comisiones pendientes
+
+Vacancias por atender:
+├── Notificaciones nuevas (links de WhatsApp abiertos aquí)
+├── Unidades activas en búsqueda
+└── Vacancias completadas (rentadas)
+```
+
+### 7.2 Mis Vacancias
+```
+/vacancies
+
+Por cada vacancia:
+├── Inmueble + unidad
+├── Dueño (nombre, contacto)
+├── Estado: NOTIFIED → ACCEPTED → ACTIVE → RENTED
+├── Días en mercado
+├── Renta sugerida
+├── Características: m², recámaras, baños
+├── Galería de fotos del inmueble
+├── Mis actualizaciones (notas, # interesados)
+└── Acciones:
+    ├── [Aceptar trabajo] (si estado = NOTIFIED)
+    ├── [Rechazar] (si estado = NOTIFIED)
+    ├── [Agregar actualización] (texto + # interesados)
+    └── [Reportar cliente encontrado]
+
+Reportar cliente encontrado:
+├── Nombre del candidato
+├── Teléfono
+├── Notas
+└── [Enviar al dueño]
+→ El sistema notifica al dueño para que registre al nuevo inquilino.
+```
+
+### 7.3 Mi Expediente (solo lectura)
+```
+/my-profile
+
+├── Mis métricas: vacancias atendidas, tasa de éxito, tiempo promedio
+├── Historial de vacancias
+├── Comisiones: pagadas, pendientes
+├── Mi perfil: nombre, teléfono, email, empresa
+└── Contraseña y MFA
+```
+
+**El agente inmobiliario NO ve:**
+- Datos financieros de los inquilinos.
+- Reportes de cobranza.
+- Tickets de mantenimiento.
+- Datos de otros agentes.
+- Configuración del dueño.
+
+---
+
+# 8. MAINTENANCE_PROVIDER (Agente de Mantenimiento)
+
+## Acceso
+- Login con email + contraseña. MFA recomendado.
+- Si trabaja para múltiples dueños → selector de contexto.
+- JWT con `role: MAINTENANCE_PROVIDER`, `providerType: MAINTENANCE`.
+- Solo ve tickets asignados a él.
+
+## Pantallas
+
+### 8.1 Dashboard del Proveedor
+```
+/dashboard
+
+Mis tickets:
+├── Nuevos (por aceptar)
+├── En progreso
+├── Completados este mes
+├── Presupuestos pendientes de aprobación
+└── Pagos pendientes
+
+Notificaciones:
+├── Tickets nuevos (links de WhatsApp abiertos aquí)
+├── Presupuestos aprobados/rechazados
+└── Pagos confirmados
+```
+
+### 8.2 Mis Tickets
+```
+/tickets
+
+Por cada ticket:
+├── # Ticket
+├── Inmueble + unidad
+├── Descripción del problema
+├── Fotos del inquilino
+├── Urgencia
+├── Estado: ASSIGNED → ACCEPTED → BUDGET_SENT → APPROVED → IN_PROGRESS → COMPLETED
+├── Presupuesto (si lo envié)
+│   ├── Monto
+│   ├── Descripción del trabajo
+│   ├── Tiempo estimado
+│   └── Estado: PENDING / APPROVED / REJECTED
+└── Acciones:
+    ├── [Aceptar ticket] (estado = ASSIGNED)
+    ├── [Rechazar ticket] (con motivo)
+    ├── [Enviar presupuesto] (monto + descripción + tiempo)
+    ├── [Marcar en progreso]
+    ├── [Marcar completado] (+ subir fotos de evidencia)
+    └── [Solicitar pago] (cuando completado)
+
+Enviar presupuesto:
+├── Monto total *
+├── Descripción detallada del trabajo *
+├── Desglose (materiales + mano de obra)
+├── Tiempo estimado de ejecución *
+├── Fotos de diagnóstico (opcional)
+└── [Enviar al dueño para aprobación]
+
+Marcar completado:
+├── Descripción del trabajo realizado *
+├── Fotos de evidencia * (mínimo 1)
+├── Notas
+└── [Marcar como completado]
+→ Notifica al dueño y al inquilino
+```
+
+### 8.3 Mi Expediente (solo lectura)
+```
+/my-profile
+
+├── Mis métricas: tickets, tiempo respuesta, tasa aceptación
+├── Historial de trabajos
+├── Pagos: recibidos, pendientes
+├── Mi perfil: nombre, teléfono, email, empresa, modelo de compensación
+└── Contraseña y MFA
+```
+
+**El proveedor de mantenimiento NO ve:**
+- Datos financieros (rentas, pagos de inquilinos).
+- Otros tickets no asignados a él.
+- Datos de otros proveedores.
+- Reportes del dueño.
+- Configuración del dueño.
+
+---
+
+# 9. REPORTE MENSUAL — ESTRUCTURA COMPLETA
+
+## 9.1 MonthlyLedger (por contrato/inquilino)
+
+```
+Expediente mensual - Enero 2026
+Inquilino: Pedro Martínez
+Unidad: Depto 4B - Edificio Roma Norte
+
+┌─────────────────────────────────────────────────────────┐
+│ Concepto                              │ Monto           │
+├───────────────────────────────────────┼─────────────────┤
+│ Renta base                            │    $12,000.00   │
+│ Cargo extra: estacionamiento          │     $1,500.00   │
+│ Recargo por pago tardío (día 12)      │       $600.00   │
+│ Descuento: convenio aprobado          │      -$500.00   │
+├───────────────────────────────────────┼─────────────────┤
+│ TOTAL ESPERADO                        │    $13,600.00   │
+├───────────────────────────────────────┼─────────────────┤
+│ Pago 1: SPEI 12/01 (validado)        │    $10,000.00   │
+│ Pago 2: Mercado Pago 18/01           │     $3,600.00   │
+├───────────────────────────────────────┼─────────────────┤
+│ TOTAL PAGADO                          │    $13,600.00   │
+│ SALDO PENDIENTE                       │         $0.00   │
+│ ESTADO                                │      ✅ PAGADO   │
+└───────────────────────────────────────┴─────────────────┘
+
+Convenio activo: #PA-2026-003
+  Tipo: parcialidades (2 pagos)
+  Estado: CUMPLIDO
+```
+
+## 9.2 MonthlySummary (por inmueble)
+
+```
+Resumen mensual - Enero 2026
+Inmueble: Edificio Roma Norte (8 unidades)
+
+INGRESOS
+┌─────────────────────────────────────────────────────────┐
+│ Unidad      │ Inquilino       │ Cobrado    │ Pendiente  │
+├─────────────┼─────────────────┼────────────┼────────────┤
+│ Depto 1A    │ Juan Pérez      │ $10,000    │ $0         │
+│ Depto 2A    │ María López     │ $11,000    │ $0         │
+│ Depto 3B    │ Carlos Ruiz     │  $8,500    │ $3,500     │
+│ Depto 4B    │ Pedro Martínez  │ $13,600    │ $0         │
+│ Local 1     │ Negocio SA      │ $25,000    │ $0         │
+│ Local 2     │ --- VACANTE --- │     ---    │ ---        │
+│ Depto 5A    │ Ana Torres      │ $9,000     │ $0         │
+│ Depto 6A    │ Luis Gómez      │ $0         │ $10,000    │
+├─────────────┼─────────────────┼────────────┼────────────┤
+│ TOTAL       │                 │ $77,100    │ $13,500    │
+└─────────────┴─────────────────┴────────────┴────────────┘
+
+EGRESOS
+┌─────────────────────────────────────────────────────────┐
+│ Concepto                    │ Estado        │ Monto      │
+├─────────────────────────────┼───────────────┼────────────┤
+│ Mantenimiento: fuga Depto 3B│ ✅ Pagado     │ $3,500     │
+│ Pintura áreas comunes       │ ✅ Pagado     │ $8,000     │
+│ Impermeabilización techo    │ ⏳ Aprobado   │ $15,000    │
+│ Comisión agente (Local 2)   │ ⏳ Pendiente  │ $25,000    │
+├─────────────────────────────┼───────────────┼────────────┤
+│ TOTAL PAGADO                │               │ $11,500    │
+│ TOTAL COMPROMETIDO          │               │ $40,000    │
+└─────────────────────────────┴───────────────┴────────────┘
+
+RESULTADO
+┌─────────────────────────────────────────────────────────┐
+│ Ingresos cobrados                     │    $77,100      │
+│ Egresos pagados                       │   -$11,500      │
+│ ═══════════════════════════════════════╪═════════════════│
+│ NETO DEL MES                          │    $65,600      │
+│                                       │                 │
+│ Pendiente de cobrar                   │    $13,500      │
+│ Comprometido sin pagar                │    $40,000      │
+│ Unidades vacantes                     │    1 de 8       │
+└───────────────────────────────────────┴─────────────────┘
+```
+
+## 9.3 Reporte de Facturación para Contador
+
+```
+Reporte de facturación - Enero 2026
+Dueño: Grupo Inmobiliario López
+RFC: GIL850101AB3
+
+┌──────────┬───────────────┬──────────┬───────┬────────┬──────┬──────────────┐
+│ Fecha    │ Inquilino     │ RFC inq. │ Monto │ Método │Forma │ Predial      │
+├──────────┼───────────────┼──────────┼───────┼────────┼──────┼──────────────┤
+│ 03/01/26 │ Juan Pérez    │ PEPJ8... │10,000 │ PUE    │ 03   │ 049-123-001  │
+│ 05/01/26 │ María López   │ LOMA9... │11,000 │ PUE    │ 03   │ 049-123-002  │
+│ 12/01/26 │ Pedro Martínez│ MARP0... │10,000 │ PPD    │ 03   │ 049-123-004  │
+│ 18/01/26 │ Pedro Martínez│ MARP0... │ 3,600 │ COMP   │ 04   │ 049-123-004  │
+│ 01/01/26 │ Negocio SA    │ NEG01... │25,000 │ PUE    │ 03   │ 049-123-L01  │
+│ 08/01/26 │ Ana Torres    │ TOAA8... │ 9,000 │ PUE    │ 03   │ 049-123-005  │
+├──────────┼───────────────┼──────────┼───────┼────────┼──────┼──────────────┤
+│          │               │          │68,600 │        │      │              │
+└──────────┴───────────────┴──────────┴───────┴────────┴──────┴──────────────┘
+
+Notas:
+- Pedro Martínez: 2 pagos por convenio de parcialidades. Primer pago genera
+  CFDI PPD. Segundo pago genera complemento de pago ligado al primero.
+- Negocio SA (persona moral): aplicar retención 2/3 IVA + 10% ISR.
+- Clave producto SAT: 80131500 para todos.
+- Forma de pago 03 = transferencia electrónica, 04 = tarjeta.
+
+[Exportar Excel]  [Exportar PDF]
+```
+
+## 9.4 Quién Ve Qué Reporte
+
+```
+                    │ MonthlyLedger │ MonthlySummary │ Facturación │ Exp. Proveedor │
+                    │ (por inquilino)│ (por inmueble) │ (para CFDI) │ (métricas)     │
+────────────────────┼───────────────┼────────────────┼─────────────┼────────────────┤
+SUPER_ADMIN         │      ✅       │      ✅        │     ✅      │      ✅        │
+OWNER               │      ✅       │      ✅        │     ✅      │      ✅        │
+PROPERTY_ADMIN      │   con permiso │   con permiso  │ con permiso │   con permiso  │
+ACCOUNTANT          │      ✅       │      ✅        │     ✅      │      ❌        │
+TENANT              │  solo el suyo │      ❌        │     ❌      │      ❌        │
+REAL_ESTATE_AGENT   │      ❌       │      ❌        │     ❌      │  solo el suyo  │
+MAINTENANCE_PROVIDER│      ❌       │      ❌        │     ❌      │  solo el suyo  │
+```
+
+---
+
+# 10. VALIDACIONES DE SEGURIDAD POR ENDPOINT
+
+## Matriz de acceso completa
+
+```
+ENDPOINT                          │ SA │ OW │ PA │ AC │ TE │ RE │ MA │ Validación extra
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+POST /auth/login                  │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ Rate limit 5/15min
+POST /auth/select-context         │ — │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ Token BASE válido
+POST /auth/refresh                │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ ✅ │ Rotación + detección reuso
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /admin/owners                 │ ✅ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ Solo SUPER_ADMIN
+POST /admin/owners                │ ✅ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ Audit log
+DELETE /admin/owners/{id}         │ ✅ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ Reautenticación + audit
+POST /admin/platform-providers    │ ✅ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ Audit log
+GET /admin/audit                  │ ✅ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ Paginado obligatorio
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /properties                   │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ RLS filtra por owner
+POST /properties                  │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ PROPERTY_CREATE
+PUT /properties/{id}              │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ PROPERTY_UPDATE
+DELETE /properties/{id}           │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ PROPERTY_DELETE + reauth
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /units                        │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ RLS
+POST /units                       │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ UNIT_CREATE
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /leases                       │ ✅ │ ✅ │ P  │ ✅ │ ❌ │ ❌ │ ❌ │ RLS
+POST /leases                      │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ LEASE_CREATE
+GET /leases/my                    │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ Solo su contrato
+DELETE /leases/{id}/expedient     │ ❌ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ EXPEDIENT_DELETE + reauth + MFA
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /payments                     │ ✅ │ ✅ │ P  │ ✅ │ ❌ │ ❌ │ ❌ │ PAYMENT_VIEW
+GET /payments/my                  │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ Solo sus pagos
+POST /payments                    │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ PAYMENT_CREATE_OWN
+POST /payments/{id}/apply         │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ PAYMENT_APPLY
+POST /payments/{id}/review        │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ PAYMENT_REVIEW
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /agreements                   │ ✅ │ ✅ │ P  │ ✅ │ ❌ │ ❌ │ ❌ │ AGREEMENT_VIEW
+GET /agreements/my                │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ Solo sus convenios
+POST /agreements                  │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ Solicitar convenio
+POST /agreements/{id}/approve     │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ AGREEMENT_APPROVE
+POST /agreements/{id}/reject      │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ AGREEMENT_REJECT
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /maintenance/tickets          │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ RLS
+GET /maintenance/tickets/my       │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ Solo sus tickets
+GET /maintenance/tickets/assigned │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ Solo asignados a él
+POST /maintenance/tickets         │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ TICKET_CREATE
+POST /maintenance/tickets/{id}/accept │❌│ ❌│ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ Solo si asignado
+POST /maintenance/budgets         │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ BUDGET_CREATE
+POST /maintenance/budgets/{id}/approve│✅│ ✅│ P │ ❌ │ ❌ │ ❌ │ ❌ │ EXPENSE_APPROVE
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /vacancies                    │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ RLS
+GET /vacancies/assigned           │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ Solo asignadas
+POST /vacancies/{id}/accept       │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ Solo si notificado
+POST /vacancies/{id}/update       │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ Solo si aceptada
+POST /vacancies/{id}/client-found │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ Solo si activa
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+POST /vacate-requests             │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ❌ │ ❌ │ Solo su contrato
+GET /vacate-requests/{id}         │ ✅ │ ✅ │ P  │ ❌ │ ✅ │ ❌ │ ❌ │ RLS + ownership
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /reports/monthly-summary      │ ✅ │ ✅ │ P  │ ✅ │ ❌ │ ❌ │ ❌ │ REPORT_VIEW
+GET /reports/billing              │ ✅ │ ✅ │ P  │ ✅ │ ❌ │ ❌ │ ❌ │ REPORT_VIEW
+GET /reports/export               │ ✅ │ ✅ │ P  │ ✅ │ ❌ │ ❌ │ ❌ │ REPORT_EXPORT + audit
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /providers/my-profile         │ ❌ │ ❌ │ ❌ │ ❌ │ ❌ │ ✅ │ ✅ │ Solo su expediente
+GET /providers/{id}/metrics       │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ❌ │ RLS
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+POST /photos/upload               │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ❌ │ ✅ │ Validar tipo archivo
+GET /photos/{propertyId}          │ ✅ │ ✅ │ P  │ ❌ │ ❌ │ ✅ │ ✅ │ RLS + role check
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+GET /actions/preview/{token}      │ PÚBLICO (sin auth) — solo info mínima │ Token válido + no expirado
+POST /actions/respond/{token}     │ Requiere auth — verificar recipient   │ Token + auth + audit
+──────────────────────────────────┼────┼────┼────┼────┼────┼────┼────┼──────────────────
+POST /webhooks/whatsapp           │ PÚBLICO — validar HMAC X-Hub-Signature-256 │ + idempotencia Redis
+POST /webhooks/mercadopago        │ PÚBLICO — validar HMAC x-signature        │ + replay protection
+POST /webhooks/n8n                │ PÚBLICO — validar X-API-Key header        │ + idempotencia Redis
+
+Leyenda:
+  SA = SUPER_ADMIN
+  OW = OWNER
+  PA = PROPERTY_ADMIN (P = con permiso específico)
+  AC = ACCOUNTANT
+  TE = TENANT
+  RE = REAL_ESTATE_AGENT
+  MA = MAINTENANCE_PROVIDER
+```
+
+## Validaciones adicionales que aplican a TODO
+
+```
+1. CSRF: Deshabilitado para API (stateless JWT), habilitado para webhooks con HMAC.
+
+2. CORS: Solo permitir orígenes de la app:
+   - https://app.propgest.mx
+   - https://admin.propgest.mx (si separas el admin)
+   - http://localhost:5173 (solo en desarrollo)
+
+3. Content-Type: Solo aceptar application/json en la API.
+   Rechazar cualquier otro tipo con 415.
+
+4. Tamaño de request:
+   - JSON body: max 1MB
+   - Upload de fotos: max 5MB por foto
+   - Upload de PDF: max 10MB
+
+5. SQL Injection: Spring Data JPA con consultas parametrizadas.
+   NUNCA concatenar strings en queries.
+   NUNCA usar @Query con string interpolation.
+
+6. XSS: React escapa por defecto. NUNCA usar dangerouslySetInnerHTML.
+   CSP header bloquea scripts inline.
+
+7. Audit log: TODA acción de escritura (POST/PUT/DELETE) se loggea:
+   - Quién (userId, role)
+   - Qué (endpoint, recurso)
+   - Desde dónde (IP, User-Agent)
+   - Cuándo (timestamp)
+   - Contexto (ownerId)
+
+8. Headers de seguridad (en cada response):
+   - Strict-Transport-Security
+   - X-Content-Type-Options: nosniff
+   - X-Frame-Options: DENY
+   - Content-Security-Policy
+   - Referrer-Policy
+   - Permissions-Policy
+```
+
+---
+
+# CHECKLIST FINAL: ¿ESTÁ COMPLETO?
+
+```
+✅ SUPER_ADMIN: dashboard, gestión de dueños, proveedores plataforma, auditoría, usuarios, config
+✅ OWNER: dashboard, inmuebles, unidades, contratos, cobranza, convenios, mantenimiento, vacancias,
+          reportes, configuración, permisos de admins, onboarding
+✅ PROPERTY_ADMIN: mismas pantallas que OWNER filtradas por permisos, multi-contexto
+✅ ACCOUNTANT: dashboard financiero, reporte facturación, resumen mensual, historial pagos, solo lectura
+✅ TENANT: dashboard, mis pagos, mantenimiento, convenios, desocupación, mi perfil, derechos ARCO
+✅ REAL_ESTATE_AGENT: dashboard, mis vacancias, aceptar/reportar, mi expediente, multi-contexto
+✅ MAINTENANCE_PROVIDER: dashboard, mis tickets, presupuestos, completar trabajo, mi expediente
+✅ REPORTE MENSUAL: MonthlyLedger, MonthlySummary, reporte facturación, quién ve qué
+✅ SEGURIDAD: JWT 2 pasos, RLS, HMAC webhooks, rate limiting, permisos granulares,
+              reautenticación, action tokens, audit log, validación DTOs, CORS, CSP, ARCO
+```

@@ -1,0 +1,12 @@
+Change: GlobalExceptionHandler now handles org.springframework.security.access.AccessDeniedException with HTTP 403 (not 400).
+
+Verification (after backend restart with new classes):
+- Request: GET http://localhost:8080/api/properties/{propertyId}/timeline
+- Auth: Bearer token for role TENANT (token value not stored here)
+- Property: b53107aa-7f98-48e4-812c-b5d1a4285942
+- HTTP status: 403
+- Body: {"message":"Access Denied"}
+
+Code: backend/src/main/java/com/admindi/backend/exception/GlobalExceptionHandler.java
+
+RESULT: PASS (403 for @PreAuthorize denial)

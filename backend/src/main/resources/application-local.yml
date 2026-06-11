@@ -1,0 +1,18 @@
+# Perfil local — desarrollo sin usuarios fantasma automáticos.
+spring:
+  config:
+    activate:
+      on-profile: local
+
+mercadopago:
+  allow-manual-token-link: ${MP_ALLOW_MANUAL_LINK:false}
+  # OAuth con credenciales de producción pero cuentas de prueba MP
+  oauth-use-test-token: ${MP_OAUTH_USE_TEST_TOKEN:true}
+  # Si la validación MP falla en local, guardar token APP_USR- igual (solo dev)
+  oauth-skip-token-validation: ${MP_OAUTH_SKIP_TOKEN_VALIDATION:true}
+
+admindi:
+  qa-seed:
+    # Desactivado por defecto. Solo si necesitas datos QA: ADMINDI_QA_SEED_ENABLED=true o .\run-local.ps1 -Seed
+    enabled: ${ADMINDI_QA_SEED_ENABLED:false}
+    strict-user-ids: ${ADMINDI_QA_SEED_STRICT_USER_IDS:false}

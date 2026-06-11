@@ -1,0 +1,6 @@
+GET http://localhost:8080/api/reports/monthly?monthYear=2026-04
+Role: TENANT (Bearer token, value redacted in logs)
+HTTP_STATUS: 400
+BODY: {"message":"Access Denied"}
+EXPECT: ZIP export restricted to SUPER_ADMIN, OWNER, ACCOUNTANT (or REPORT_EXPORT authority)
+RESULT: PASS (blocked)

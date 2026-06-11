@@ -1,0 +1,30 @@
+Etapa 3 QA seed (local PostgreSQL propgest_db) — 2026-04-15 second pass
+
+1) Script executed
+- File: 00-run/seed_etapa3_qa.sql (UTF-8)
+- Applies deletes for ids prefixed etapa3-* then inserts minimal operational data for owner org 5cccf543-2a2a-4ba5-8e3b-518719079a7b and property b3f9b48b-130b-457f-90af-2973a840a3a1.
+
+2) Users created (password bcrypt = copy of superadmin@admindi.com — use the same plaintext password you use for superadmin in dev)
+- qa-tenant@etapa3.local (TENANT) id etapa3-tenant-001
+- qa-accountant@etapa3.local (ACCOUNTANT) id etapa3-acct-001, owner_id set to owner org + owner_memberships row
+- qa-maint@etapa3.local (MAINTENANCE_PROVIDER) id etapa3-maint-001
+- qa-agent@etapa3.local (REAL_ESTATE_AGENT) id etapa3-agent-001
+
+3) Operational objects
+- Units etapa3-unit-a (occupied), etapa3-unit-b (vacant)
+- Tenant profile etapa3-tp-001, lease etapa3-lease-001
+- Invoice etapa3-inv-001 month 2026-05: PARTIALLY_PAID, shortfall PARTIAL_NEXT_MONTH, paid 4000 / outstanding 6000
+- Payment agreement etapa3-agr-001 APPROVED + 2 installments PENDING
+- Maintenance ticket/quote/expense (expense PAID) etapa3-ticket-001 / etapa3-quote-001 / etapa3-exp-maint-001
+- Vacancy etapa3-vac-001 on unit B with agent assigned
+- Commercial activity etapa3-comm-act-001 commission APPROVED + expense etapa3-exp-comm-001
+- Property movements etapa3-mov-001..006 (timeline)
+
+4) Post-seed SQL
+- UPDATE maintenance_tickets SET status='APPROVED' WHERE id='etapa3-ticket-001' (aligned with approved quote)
+- UPDATE payment_agreements SET status='ACTIVE' WHERE id='etapa3-agr-001' (monthly report counts ACTIVE agreements; seed was first inserted as APPROVED then adjusted)
+
+5) Test month for reports/summary
+- Use monthYear=2026-05 for owner summary, monthly property report, ZIP/Excel when validating non-zero paths.
+
+No JWTs or MFA secrets are stored in this repository.

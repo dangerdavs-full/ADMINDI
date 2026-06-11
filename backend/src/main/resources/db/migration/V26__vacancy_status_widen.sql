@@ -1,0 +1,1 @@
+ALTER TABLE vacancies ALTER COLUMN status TYPE VARCHAR(32);

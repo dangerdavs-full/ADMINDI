@@ -1,0 +1,12 @@
+-- V3 — (neutralizado en V50).
+--
+-- Originalmente este script sembraba la fila SUPER_ADMIN
+-- 'superadmin@admindi.com' / id='admin-0000-0000'. Con el rediseño de
+-- identidad (V48 username + V50 email opcional) el seed se delega a
+-- `AdminSeeder` en código: esa ruta respeta las invariantes nuevas (email
+-- NULL para SA, username canonico, sin contacto, no notificable).
+--
+-- Se conserva este archivo como un no-op deterministico para mantener la
+-- linealidad de migraciones (no re-numerar V4..V49). Si alguna vez aparece una
+-- instalacion pre-V50 con la fila legacy, V50 la elimina explicitamente.
+SELECT 1;

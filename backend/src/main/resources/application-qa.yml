@@ -1,0 +1,10 @@
+# Perfil QA (integracion / entorno de pruebas): semilla Etapa 0 activa.
+spring:
+  config:
+    activate:
+      on-profile: qa
+
+admindi:
+  qa-seed:
+    enabled: ${ADMINDI_QA_SEED_ENABLED:false}
+    strict-user-ids: ${ADMINDI_QA_SEED_STRICT_USER_IDS:false}

@@ -1,0 +1,32 @@
+ADMINDI Etapa 0 — discovery login + contexts (tenant multi-contexto)
+Cuenta: qa.paso2.1776294898@test.local
+Base: http://localhost:8080/api
+
+1) POST /auth/login -> HTTP 200 (corrida manual, antes de agotar rate limit).
+- Sin MFA: mfaChallengeToken null, mfaSetupRequired false.
+- requiresOrgSelection: true
+- Token access: tipo BASE (no se copian JWT completos en evidencia).
+- refreshToken presente (no copiado).
+
+2) organizations / contextId reales (login JSON):
+- adfcf718-7500-45bd-b66f-be0b7018def3 -> David1
+- 5cccf543-2a2a-4ba5-8e3b-518719079a7b -> David
+
+3) GET /auth/contexts con Bearer BASE del paso 1 -> HTTP 200
+- contexts[] mismos id/name que organizations.
+
+4) SMOKE_CONTEXT_ID recomendado para smoke completo:
+- adfcf718-7500-45bd-b66f-be0b7018def3 (David1)
+  (alternativa: 5cccf543-2a2a-4ba5-8e3b-518719079a7b)
+
+5) Smoke completo (etapa0-smoke.ps1):
+- Bloqueado en login HTTP 429: limite 5 POST /auth/login por IP cada 15 min (RateLimitInterceptor, bucket en memoria).
+- Accion: reiniciar proceso backend (limpia buckets) o esperar ventana; luego:
+  Set-Location "c:\Users\Arfax\Desktop\plataforma inmubles"
+  $env:SMOKE_BASE_URL="http://localhost:8080/api"
+  $env:SMOKE_EMAIL="qa.paso2.1776294898@test.local"
+  $env:SMOKE_PASSWORD="(tu clave)"
+  $env:SMOKE_CONTEXT_ID="adfcf718-7500-45bd-b66f-be0b7018def3"
+  .\scripts\etapa0-smoke.ps1
+
+Etapa 0: no cerrada (falta corrida smoke completa post-rate-limit).

@@ -1,0 +1,1 @@
+A JWT was pasted in chat for QA. Treat it as exposed: rotate session / logout / invalidate refresh if your policy requires it. Do not commit tokens to git.

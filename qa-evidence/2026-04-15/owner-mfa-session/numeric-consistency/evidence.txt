@@ -1,0 +1,19 @@
+Month scope: 2026-04
+Property: b3f9b48b-130b-457f-90af-2973a840a3a1
+
+GET /api/owner/accounting-summary?monthYear=2026-04
+- expectedIncome=0, collectedIncome=0, outstandingIncome=0 (org-level summary; mostly empty receivables in this DB)
+
+GET /api/properties/{id}/reports/monthly?monthYear=2026-04
+- expectedRent=0, collected=0, outstanding=0
+
+Cross-check: for this month, org summary zeros align with per-property monthly zeros (no allocated rent for this property in reporting layer).
+
+GET /api/properties/{id} (detail)
+HTTP 200 — id and name returned for UI Property detail tab.
+
+Accountant role:
+- Same accounting-summary endpoint allows ACCOUNTANT; not re-run as ACCOUNTANT user in this session.
+- GET /api/reports/monthly?monthYear=2026-04 (ZIP) returned HTTP 200, small payload (~708 bytes) — export path reachable for OWNER.
+
+RESULT: PARTIAL PASS (alignment where data is zero; accountant-specific session not duplicated)

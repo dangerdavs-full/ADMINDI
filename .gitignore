@@ -1,0 +1,55 @@
+# --- Secretos / credenciales (NUNCA comitear) ---
+.env
+.env.*
+!.env.example
+!.env.template
+.env.ngrok
+.ngrok.pid
+*.pid
+ngrok.log
+*.env.local
+*.secrets.yml
+**/application-secrets.yml
+**/application-*-secrets.yml
+!**/application-secrets.yml.example
+.jwt-key.bin
+contraseñas*.txt
+db-backup-*.sql
+
+# --- IDE / SO ---
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Backend Java / Maven ---
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# --- Frontend / Node ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Uploads locales ---
+uploads/
+
+# --- Archivo de notificaciones (Bloque C7) ---
+# Generado por NotificationArchiverService. Contiene datos personales de inquilinos
+# (email, teléfono, eventos). NUNCA debe commitearse; solo vive en el servidor.
+archive/
+backend/archive/
+
+# --- Scratch / archivos de trabajo locales ---
+backend/B.java
+backend/error.txt
+backend/compile_errors.txt
+backend/C\:*

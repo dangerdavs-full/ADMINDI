@@ -1,0 +1,40 @@
+ADMINDI — Comprobación de arranque prod-like (Etapa 0)
+Fecha evidencia: 2026-04-16
+Perfil: spring.profiles.active=prod
+ADMINDI_QA_SEED_ENABLED=false (variable de entorno en las corridas documentadas)
+ENCRYPTION_KEY: solo variable de entorno / secreto externo (ningún valor real se incluye en este archivo).
+
+================================================================================
+A) Sin ENCRYPTION_KEY — debe fallar (fail-fast)
+================================================================================
+Comando (resumen): mvn spring-boot.run profiles=prod, sin variable ENCRYPTION_KEY, sin SERVER_PORT alterno en primera corrida.
+Evidencia bruta: `boot-prod-no-key-out.txt` (mismo directorio).
+Resultado observado: arranque abortado; causa raíz incluye:
+  `[ENCRYPTION] FATAL: ENCRYPTION_KEY is required when profile 'prod' is active, ...`
+
+================================================================================
+B) ENCRYPTION_KEY Base64 válida (32 bytes aleatorios, solo en shell) — cifrado activo
+================================================================================
+Evidencia: `boot-prod-valid-key-port8081-out.txt`
+Líneas de interés:
+  - `[ENCRYPTION] AES-256-GCM encryption initialized successfully`
+  - `Started BackendApplication ...`
+  - `[QA_SEED] Deshabilitado (admindi.qa-seed.enabled=false); no se ejecuta semilla en este arranque.`
+Nota: se usó `--server.port=8081` porque el puerto 8080 estaba ocupado por otra JVM; no afecta la validez del fail-fast de cifrado ni la desactivación de semilla.
+
+================================================================================
+C) ENCRYPTION_KEY decodifica a distinto de 32 bytes — debe fallar
+================================================================================
+Evidencia: `boot-prod-invalid-key-len-out.txt`
+Causa: `ENCRYPTION_KEY must be exactly 32 bytes ... Got: 16`
+
+================================================================================
+D) ENCRYPTION_KEY no es Base64 válido — debe fallar
+================================================================================
+Evidencia: `boot-prod-invalid-b64-out.txt`
+Causa: `[ENCRYPTION] Invalid ENCRYPTION_KEY: Illegal base64 character ...`
+
+================================================================================
+E) Endurecimiento de código (2026-04-16)
+================================================================================
+`EncryptionService`: si el listado de perfiles activos contiene `prod`, la clave es obligatoria aunque otro token sea `qa` (evita `prod,qa` relajando cifrado por error).

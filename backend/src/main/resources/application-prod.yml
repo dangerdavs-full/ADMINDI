@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Perfil "prod" — defaults endurecidos para producción.
+#
+# Este archivo NO lleva secretos (se inyectan por env vars). Sobreescribe los
+# defaults de application.yml con valores más estrictos: rate limits bajos,
+# QA seed off, presupuesto IA más conservador, etc.
+#
+# Activación en el servidor:
+#   export SPRING_PROFILES_ACTIVE=prod
+#   export ANTHROPIC_API_KEY=...    (secretos por env var, nunca aquí)
+#   export TWILIO_AUTH_TOKEN=...
+# ═══════════════════════════════════════════════════════════════════════════════
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+admindi:
+  rate-limit:
+    # Login: 5 intentos en 15 min es el estándar bancario MX.
+    login-max-requests: 5
+    login-window-minutes: 15
+    # POST/PUT/PATCH en endpoints de mutación — agresivo para reducir abuso.
+    post-mutate-max-requests: 40
+    # DELETE: muy pocos por IP/minuto; hace falta reauth además.
+    delete-max-requests: 5
+    # Payments POST — incluye subir comprobantes y OCR; moderado pero vigilado.
+    payment-post-max-requests: 20
+    # Webhooks (Twilio / MercadoPago) — Twilio puede hacer reintentos, no bajar.
+    webhook-max-requests: 120
+  qa-seed:
+    enabled: false
+    strict-user-ids: true
+
+# ── V55/V56 — Chatbot WhatsApp + IA ──────────────────────────────────────────
+# DEFAULTS ENDURECIDOS. El operador debe habilitar explícitamente cada flag
+# con la variable de entorno correspondiente tras verificar las credenciales.
+
+# En producción queremos flags conservadores por default:
+#  - Si el operador no setea la env var ANTHROPIC_ENABLED=true el sistema queda
+#    en modo degradado (sin IA), NO rompe.
+#  - Si se habilita sin ANTHROPIC_API_KEY, ClaudeService.isOperational() devuelve
+#    false y los flujos caen al fallback sin llamar a la API.
+anthropic:
+  # La key JAMÁS debe escribirse aquí. Este archivo SÍ se commitea.
+  # Inyecta ANTHROPIC_API_KEY como variable de entorno en el servidor
+  # (systemd EnvironmentFile, Docker secret, AWS SSM, etc.) o, para
+  # dev/QA, ponla en application-secrets.yml que está en .gitignore.
+  enabled: ${ANTHROPIC_ENABLED:false}
+  api-key: ${ANTHROPIC_API_KEY:}
+  # Presupuesto DIARIO por usuario: $1 USD es suficiente para ~20 OCR + 50
+  # categorizaciones. Subir solo después de validar consumo real en 1-2 semanas.
+  daily-budget-usd-per-user: ${ANTHROPIC_DAILY_BUDGET:1.00}
+  timeout-ms: ${ANTHROPIC_TIMEOUT_MS:30000}
+  max-tokens: ${ANTHROPIC_MAX_TOKENS:2048}
+
+banxico:
+  cep:
+    enabled: ${BANXICO_CEP_ENABLED:true}
+    # Rate limit interno 1 req/seg — cortesía con Banxico. NO bajar.
+    min-request-interval-ms: ${BANXICO_CEP_INTERVAL:1000}
+    adaptive-ai: ${BANXICO_ADAPTIVE_AI:true}
+
+whatsapp:
+  bot:
+    enabled: ${WHATSAPP_BOT_ENABLED:false}
+    # Máximo de medios por mensaje. Twilio permite hasta 10; 5 es razonable
+    # para tickets de mantenimiento y reduce superficie de ataque.
+    max-media-per-message: 5
+    # 5 MB por archivo (límite duro de Twilio). Si se sube algo mayor, lo
+    # rechazamos antes de tocar el disco.
+    max-media-size-bytes: 5242880
+  pin:
+    min-length: 4
+    max-length: 6
+    # En prod endurecemos los intentos: 3 en lugar de 5. Tras 3 fallos consecutivos
+    # se bloquea 30 min. El SUPER_ADMIN u OWNER pueden desbloquear vía PIN_RESET.
+    max-attempts: 3
+    lockout-minutes: 30
+    # BCrypt strength 12 ≈ 250ms por verify en hw moderno. Sube a 13 si quieres
+    # más resistencia a offline brute-force, pero aumenta latencia del bot.
+    bcrypt-strength: 12
+  session:
+    # 10 min en prod — si el inquilino deja el celular abierto, se invalida antes.
+    ttl-minutes: 10
+
+# Logging específico para operaciones críticas en producción.
+# Los loggers de IA y bot emiten WARN en fallos — no silenciar.
+logging:
+  level:
+    com.admindi.backend.ai: INFO
+    com.admindi.backend.whatsapp: INFO
+    # Hibernate SQL queda en WARN para no inundar logs con queries.
+    org.hibernate.SQL: WARN

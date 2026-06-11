@@ -1,0 +1,354 @@
+spring:
+  application:
+    name: admindi-backend
+
+  # Mail / SMTP — Etapa 1.
+  # Proveedor inicial: Gmail SMTP. Cambiar MAIL_HOST/MAIL_PORT/MAIL_USERNAME/MAIL_PASSWORD para otro proveedor.
+  # Los valores REALES no viven en el repo: se inyectan por variables de entorno o
+  # por perfil/secret local (.env ignorado por git). Si faltan, el servicio de mail
+  # queda inerte (app.mail.enabled=false) y se audita EMAIL_SKIPPED.
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    protocol: ${MAIL_PROTOCOL:smtp}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_AUTH:true}
+          starttls:
+            enable: ${MAIL_STARTTLS:true}
+            required: ${MAIL_STARTTLS_REQUIRED:true}
+          connectiontimeout: 5000
+          timeout: 8000
+          writetimeout: 8000
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/propgest_db?preferQueryMode=simple&prepareThreshold=0
+    username: ${DB_USERNAME:postgres}
+    # Hardening: sin default en el repo. La contraseña real se inyecta por la
+    # env var DB_PASSWORD o por el perfil "secrets" (application-secrets.yml).
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+server:
+  port: 8080
+
+app:
+  admin:
+    # V50/V51 — SUPER_ADMIN se identifica por username case-sensitive. El email
+    # queda NULL en la fila del seed (invariante: SA no tiene datos de contacto).
+    username: ${ADMIN_USERNAME:DavidSuperAdmin-2026}
+    # Hardening: sin default en el repo. Se inyecta por ADMIN_PASSWORD o por el
+    # perfil "secrets". Si queda vacía, AdminSeeder aborta el bootstrap del SA.
+    password: ${ADMIN_PASSWORD:}
+    name: ${ADMIN_NAME:David Super Admin}
+  url: ${APP_URL:http://localhost:3000}
+  encryption:
+    key: ${ENCRYPTION_KEY:}
+  # Mail de aplicación (EmailService): gate + remitente + proveedor informativo.
+  # Sólo se envía si enabled=true Y from no vacío Y spring.mail.* configurado.
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    provider: ${MAIL_PROVIDER:smtp-gmail}
+    from: ${MAIL_FROM:}
+
+# Twilio WhatsApp Business API (Fase 1 notificaciones).
+# Salida directa desde el backend (sin n8n).
+# Comportamiento por defecto: DESHABILITADO. Si faltan credenciales o enabled=false,
+# TwilioWhatsAppService audita WHATSAPP_SKIPPED sin romper el flujo (mismo patrón
+# que EmailService).
+#
+# Credenciales mínimas para habilitar:
+#   - TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN (obligatorios)
+#   - TWILIO_WHATSAPP_FROM (ej. whatsapp:+14155238886) o TWILIO_MESSAGING_SERVICE_SID
+#
+# Los mensajes salientes fuera de la ventana de 24h exigen plantillas pre-aprobadas
+# por Meta: registrar cada eventType como plantilla en la consola de Twilio.
+twilio:
+  enabled: ${TWILIO_ENABLED:false}
+  account-sid: ${TWILIO_ACCOUNT_SID:}
+  auth-token: ${TWILIO_AUTH_TOKEN:}
+  whatsapp-from: ${TWILIO_WHATSAPP_FROM:}
+  messaging-service-sid: ${TWILIO_MESSAGING_SERVICE_SID:}
+  default-country-code: ${TWILIO_DEFAULT_CC:+52}
+  # URL pública exacta donde Twilio hará POST de los inbound webhooks. Necesaria
+  # para validar X-Twilio-Signature (HMAC-SHA1 sobre URL+params+auth-token).
+  webhook-public-url: ${TWILIO_WEBHOOK_PUBLIC_URL:}
+
+  # Plantillas aprobadas de WhatsApp Business Platform (Meta). Los Content SIDs (HX…)
+  # se asignan en Twilio Console > Messaging > Content Builder después de que Meta
+  # aprueba cada plantilla. El nombre de cada property corresponde a la plantilla
+  # esperada en producción (ver WHATSAPP_TEMPLATES.md):
+  #   owner-welcome            → admindi_owner_welcome_v2
+  #   tenant-welcome           → admindi_tenant_welcome_v2
+  #   owner-profile-updated    → admindi_owner_profile_updated_v3
+  #   payment-reminder-{5,3,2,1}d → admindi_payment_reminder_{5,3,2,1}d_v1
+  #   transfer-confirmed       → admindi_transfer_confirmed_owner_v2
+  #   unpaid-digest            → admindi_unpaid_digest_v2
+  #   monthly-report           → admindi_monthly_report_v2
+  # Si templates.enabled=true pero un SID está vacío para un eventType, TwilioWhatsAppService
+  # AUDITA WHATSAPP_SKIPPED con motivo "template configured but no templateVariables provided".
+  templates:
+    # Los 34 Content SIDs ya aprobados por Meta se hardcodean como default para que el
+    # backend funcione out-of-the-box. Cada uno puede sobrescribirse con su env var si
+    # en algún entorno hace falta apuntar a otro SID (staging, sandbox, dry-run).
+    # Los SIDs NO son secretos (identificadores públicos), el auth-token sí lo es.
+    enabled: ${TWILIO_TEMPLATES_ENABLED:true}
+    owner-welcome: ${TWILIO_TEMPLATE_OWNER_WELCOME:HXddc8ce4292e4933e107e30c254462590}
+    tenant-welcome: ${TWILIO_TEMPLATE_TENANT_WELCOME:HX07cb001df7b63655ab3fb67622cfe79e}
+    owner-profile-updated: ${TWILIO_TEMPLATE_OWNER_PROFILE_UPDATED:HX4eb0c265334423af2118f7a247f83a2a}
+    payment-reminder-5d: ${TWILIO_TEMPLATE_PAYMENT_REMINDER_5D:HXac97f3585f94cf1a224a209f3ee8e436}
+    payment-reminder-3d: ${TWILIO_TEMPLATE_PAYMENT_REMINDER_3D:HX5b90af984e990de9cf10fe8bddcd5379}
+    payment-reminder-2d: ${TWILIO_TEMPLATE_PAYMENT_REMINDER_2D:HX6ce9f3f64088fbdf6d6f04e761dc2fa1}
+    payment-reminder-1d: ${TWILIO_TEMPLATE_PAYMENT_REMINDER_1D:HXa03762776cdca96548908db47cfda4ad}
+    # Recordatorio manual (Fase B2): disparado por el dueño desde el perfil del inquilino.
+    # Plantilla admindi_payment_reminder_manual_v1 (6 slots, mismo contrato que los automáticos).
+    payment-reminder-manual: ${TWILIO_TEMPLATE_PAYMENT_REMINDER_MANUAL:HX7160eca1a82ca16d692805d62adcbb76}
+    transfer-confirmed: ${TWILIO_TEMPLATE_TRANSFER_CONFIRMED:HXb44fe328103ffbf99459b32b244fa9de}
+    # Bloque C — pagos / chatbot (aprobadas Meta 24-may-2026)
+    cash-payment-pending-owner: ${TWILIO_TEMPLATE_CASH_PAYMENT_PENDING_OWNER:HX8602f66fb94e0b6c920d010210aec94d}
+    cash-payment-approved: ${TWILIO_TEMPLATE_CASH_PAYMENT_APPROVED:HX44b2bdd7b375c9d546c5a9d40bc25e57}
+    cash-payment-rejected: ${TWILIO_TEMPLATE_CASH_PAYMENT_REJECTED:HXffa5e40f35ec10ed3a6ba0b61ab0838f}
+    payment-auto-validated: ${TWILIO_TEMPLATE_PAYMENT_AUTO_VALIDATED:HXd771d5490c973edc5c219efb17003099}
+    unpaid-digest: ${TWILIO_TEMPLATE_UNPAID_DIGEST:HX0effd135079bc25238426aa18f57627e}
+    monthly-report: ${TWILIO_TEMPLATE_MONTHLY_REPORT:HX6e77e194c33f68305020006129bf45c5}
+    # Fase 1.1 (onboarding seguro): link de activación para nuevas cuentas. Mientras
+    # Meta aprueba admindi_account_activation_v1 queda vacío y cae a body libre.
+    account-activation: ${TWILIO_TEMPLATE_ACCOUNT_ACTIVATION:}
+    # Fase 2.2 (agentes / proveedores): bienvenida al rol recién creado.
+    # Plantilla Meta-aprobada el 20-abr-2026 → admindi_new_agentprovider
+    # (cubre REAL_ESTATE_AGENT y MAINTENANCE_PROVIDER porque el body no fuerza
+    # un rol específico; la diferenciación por rol queda en el correo).
+    # Contrato esperado: 3 slots → {{1}}=nombre, {{2}}=correo registrado,
+    # {{3}}=URL del portal. El correo lleva las credenciales reales; el
+    # WhatsApp es teaser "revisa tu correo".
+    agent-welcome: ${TWILIO_TEMPLATE_AGENT_WELCOME:HX4f9149917cc7abb6a475d21850ef24ad}
+    # Mismo Content SID — el template es compartido entre ambas rutas de
+    # onboarding (REAL_ESTATE_AGENT y MAINTENANCE_PROVIDER). Si en el futuro
+    # se separa, basta apuntar TWILIO_TEMPLATE_STAFF_WELCOME al nuevo SID.
+    staff-welcome: ${TWILIO_TEMPLATE_STAFF_WELCOME:HX4f9149917cc7abb6a475d21850ef24ad}
+
+    # ── Fase 2 — Agentes inmobiliarios y de mantenimiento ───────────────────
+    # 23 plantillas aprobadas el 19-abr-2026. SIDs hardcodeados como default.
+    property-vacancy-opened: ${TWILIO_TEMPLATE_PROPERTY_VACANCY_OPENED:HX22a3097b94ae17903492d60f6f1445ce}
+    prospect-proposed: ${TWILIO_TEMPLATE_PROSPECT_PROPOSED:HXab0fad96c0ff14bf4ed4060fee75da8c}
+    prospect-reminder: ${TWILIO_TEMPLATE_PROSPECT_REMINDER:HXd176fe24467f92bb90d07841ce35dbc6}
+    prospect-owner-accepted: ${TWILIO_TEMPLATE_PROSPECT_OWNER_ACCEPTED:HX37e56cbd175bd7f1537e53bdbece777a}
+    prospect-owner-rejected: ${TWILIO_TEMPLATE_PROSPECT_OWNER_REJECTED:HX06522908c1edce726aa900a034366eac}
+    contract-signed-commission-due: ${TWILIO_TEMPLATE_CONTRACT_SIGNED_COMMISSION_DUE:HX9f801d527720d17e60b99d358a43d064}
+    commission-approved: ${TWILIO_TEMPLATE_COMMISSION_APPROVED:HX4ba095fea1eb215567e57f0399a6fba2}
+    commission-spei-pending-manual: ${TWILIO_TEMPLATE_COMMISSION_SPEI_PENDING_MANUAL:HXe18a598e721a4513ffa047674a06eb33}
+    commission-paid: ${TWILIO_TEMPLATE_COMMISSION_PAID:HXc235043fce0c22654639fb3aca36b0ad}
+    agent-bank-account-validated: ${TWILIO_TEMPLATE_AGENT_BANK_ACCOUNT_VALIDATED:HXf32c74c35ad5a2db9b7e8b6282d3c96c}
+    agent-bank-account-failed: ${TWILIO_TEMPLATE_AGENT_BANK_ACCOUNT_FAILED:HX74666ad6586776ef787be84073c5007c}
+    vacancy-agent-assigned: ${TWILIO_TEMPLATE_VACANCY_AGENT_ASSIGNED:HX8e077bc64308292d7301d646df4f1c6e}
+    vacancy-agent-needed: ${TWILIO_TEMPLATE_VACANCY_AGENT_NEEDED:HX7fc93a70b48e920c42cc9cd95f6b481c}
+    vacancy-agent-rejected: ${TWILIO_TEMPLATE_VACANCY_AGENT_REJECTED:HXab62b05512ea74037f94185836815e09}
+    vacancy-agent-timeout: ${TWILIO_TEMPLATE_VACANCY_AGENT_TIMEOUT:HX64b668e7eae846b724c6976a7efaa7e1}
+    vacancy-photos-uploaded: ${TWILIO_TEMPLATE_VACANCY_PHOTOS_UPLOADED:HX5182ebeba469bf93caa99783c968dd8b}
+    vacancy-chain-exhausted: ${TWILIO_TEMPLATE_VACANCY_CHAIN_EXHAUSTED:HX47c1f7000523d0c701309b5fea267b60}
+    ticket-awaiting-owner-auth: ${TWILIO_TEMPLATE_TICKET_AWAITING_OWNER_AUTH:HXbceb0b86caf0362f35393140ebb5b7ef}
+    maintenance-ticket-rejected-by-owner: ${TWILIO_TEMPLATE_MAINTENANCE_TICKET_REJECTED_BY_OWNER:HX734bc2a13811adfde6e5e3791eba71b7}
+    maintenance-provider-rejected: ${TWILIO_TEMPLATE_MAINTENANCE_PROVIDER_REJECTED:HX160083563cc45fda746865f85f22ab0e}
+    maintenance-ticket-assigned: ${TWILIO_TEMPLATE_MAINTENANCE_TICKET_ASSIGNED:HX67f29bef07cedd51d2148b72c60115be}
+    maintenance-quote-uploaded: ${TWILIO_TEMPLATE_MAINTENANCE_QUOTE_UPLOADED:HX5908beff6f45d2f6d3c6c7b2b3e3217a}
+    maintenance-payment-required: ${TWILIO_TEMPLATE_MAINTENANCE_PAYMENT_REQUIRED:HX653848c87dd8a8047f0ac31b9974a440}
+
+storage:
+  local:
+    base-path: ${STORAGE_PATH:uploads}
+
+mercadopago:
+  # Token de la APLICACIÓN ADMINDI (integrador): webhooks + OAuth. NO es el del dueño.
+  access-token: ${MP_ACCESS_TOKEN:}
+  public-key: ${MP_PUBLIC_KEY:}
+  client-id: ${MP_CLIENT_ID:7662041248754134}
+  # client-secret: definido en application-secrets.yml (perfil secrets). El script también puede exportar MP_CLIENT_SECRET.
+  oauth-use-test-token: ${MP_OAUTH_USE_TEST_TOKEN:false}
+  oauth-skip-token-validation: ${MP_OAUTH_SKIP_TOKEN_VALIDATION:false}
+  # Debe ser URL pública HTTPS (ngrok en local). Ver scripts/NGROK_LOCAL.md
+  oauth-redirect-uri: ${MP_OAUTH_REDIRECT_URI:}
+  # Solo desarrollo interno; dueños usan OAuth «Continuar con Mercado Pago».
+  allow-manual-token-link: ${MP_ALLOW_MANUAL_LINK:false}
+  webhook-secret: ${MP_WEBHOOK_SECRET:}
+  notification-url: ${MP_NOTIFICATION_URL:}
+
+# Anthropic Claude (Fase 3: OCR comprobante, adaptive Banxico, contabilidad IA, narrativa reporte).
+# DESHABILITADO por defecto. Si enabled=false o api-key vacío, los servicios IA
+# caen a fallback documentado (no rompen flujos existentes).
+#
+# Modelo recomendado: claude-sonnet-4-5 (soporte Vision + JSON estructurado).
+# Presupuesto diario por user: límite duro en USD para evitar abuso o runaway.
+# Cada llamada registra tokens consumidos en ai_usage_log (V55).
+anthropic:
+  enabled: ${ANTHROPIC_ENABLED:false}
+  api-key: ${ANTHROPIC_API_KEY:}
+  api-url: ${ANTHROPIC_API_URL:https://api.anthropic.com/v1/messages}
+  api-version: ${ANTHROPIC_API_VERSION:2023-06-01}
+  model: ${ANTHROPIC_MODEL:claude-sonnet-4-5}
+  vision-model: ${ANTHROPIC_VISION_MODEL:claude-sonnet-4-5}
+  timeout-ms: ${ANTHROPIC_TIMEOUT_MS:30000}
+  max-tokens: ${ANTHROPIC_MAX_TOKENS:2048}
+  # USD de presupuesto duro por usuario por día. Al agotarse, la API IA responde
+  # 429 y el flujo cae a manual. Suficiente para decenas de OCR + categorizaciones.
+  daily-budget-usd-per-user: ${ANTHROPIC_DAILY_BUDGET:2.00}
+  # Precios por millón de tokens (referencia para cost tracking; actualizar si
+  # Anthropic cambia pricing). Valores default corresponden a Sonnet 4.5 @ 2026-04.
+  input-cost-per-mtok: ${ANTHROPIC_INPUT_COST_MTOK:3.00}
+  output-cost-per-mtok: ${ANTHROPIC_OUTPUT_COST_MTOK:15.00}
+
+# Banxico CEP (Fase 3). Reemplaza el adapter MOCK por un scraper real con
+# fallback IA-adaptativo cuando Banxico cambia su HTML.
+banxico:
+  cep:
+    enabled: ${BANXICO_CEP_ENABLED:false}
+    base-url: ${BANXICO_CEP_URL:https://www.banxico.org.mx/cep/}
+    request-timeout-ms: ${BANXICO_CEP_TIMEOUT:15000}
+    # User-Agent identificable (cortesía + trazabilidad). No ocultamos origen.
+    user-agent: ${BANXICO_CEP_UA:ADMINDI/1.0 (contact@admindi.mx; CEP validator)}
+    # Rate limit interno: mínimo N ms entre requests a Banxico desde este backend.
+    min-request-interval-ms: ${BANXICO_CEP_INTERVAL:1000}
+    # Si el parser Jsoup falla por cambio de HTML, usar Claude para regenerar
+    # los selectores y guardar nueva versión activa en banxico_scrape_schema.
+    adaptive-ai: ${BANXICO_ADAPTIVE_AI:true}
+
+# Chatbot WhatsApp (Fase 2). Requiere twilio.enabled=true para operar; si
+# twilio=false el webhook responde 503 y el bot queda inactivo.
+whatsapp:
+  bot:
+    enabled: ${WHATSAPP_BOT_ENABLED:false}
+    # Dueño: validar comprobantes CASH y SPEI en cola manual por WhatsApp.
+    owner-enabled: ${WHATSAPP_BOT_OWNER_ENABLED:false}
+    # Máximo de archivos multimedia que el bot acepta por mensaje o ticket.
+    max-media-per-message: 5
+    # Límite de tamaño por archivo (Twilio sirve hasta 5MB). Aplica a fotos y PDFs.
+    max-media-size-bytes: 5242880
+  pin:
+    # Longitud aceptable del NIP de WhatsApp para inquilinos.
+    min-length: 4
+    max-length: 6
+    # Intentos fallidos consecutivos antes de bloquear.
+    max-attempts: 5
+    # Minutos de bloqueo tras max-attempts. El SUPER_ADMIN/OWNER puede reset.
+    lockout-minutes: 30
+    # BCrypt cost factor (12 = ~250ms en hardware moderno, balance perf/seguridad).
+    bcrypt-strength: 12
+  session:
+    # TTL de la sesión conversacional inactiva. Si el inquilino tarda más,
+    # se le vuelve a pedir NIP en la siguiente interacción.
+    ttl-minutes: 15
+
+# --- ADMINDI gobierno Etapa 0 / seguridad HTTP ---
+# Prod: perfil "prod" (application-prod.yml): login 5/15 min y sin semilla QA.
+# Semilla QA: desactivada por defecto; activar solo con ADMINDI_QA_SEED_ENABLED=true (smoke tests).
+admindi:
+  rate-limit:
+    login-max-requests: 10
+    login-window-minutes: 15
+    auth-context-refresh-max-requests: 10
+    default-window-ms: 60000
+    default-max-requests: 200
+    webhook-max-requests: 100
+    post-mutate-max-requests: 60
+    delete-max-requests: 10
+    payment-post-max-requests: 30
+  qa-seed:
+    # Desactivado por defecto. Activar con perfil local/qa (application-*.yml) o ADMINDI_QA_SEED_ENABLED=true.
+    enabled: ${ADMINDI_QA_SEED_ENABLED:false}
+    # true: email QA debe coincidir con UUID fijo. false: adoptar id ya persistido (ver application-local/qa).
+    strict-user-ids: ${ADMINDI_QA_SEED_STRICT_USER_IDS:true}
+  # Recordatorios de pago (PaymentReminderScheduler). Tick diario 08:00 CST por default.
+  # Sobrescribir ADMINDI_REMINDERS_CRON para pruebas (ej "0 */5 * * * *" cada 5min).
+  reminders:
+    cron: ${ADMINDI_REMINDERS_CRON:0 0 8 * * *}
+  # Digest diario al dueño con inquilinos con pago vencido (UnpaidTenantsDigestScheduler).
+  # Default: 09:00 CDMX (una hora después del cron de recordatorios para reflejar pagos recibidos
+  # esa misma mañana). Si no hay facturas vencidas el job NO envía nada.
+  digest:
+    unpaid:
+      cron: ${ADMINDI_DIGEST_UNPAID_CRON:0 0 9 * * *}
+  # Reporte mensual al dueño (MonthlyReportScheduler). Se dispara el día 1 de cada mes
+  # a las 08:00 CDMX y resume el mes que acaba de terminar.
+  reports:
+    monthly:
+      cron: ${ADMINDI_REPORTS_MONTHLY_CRON:0 0 8 1 * *}
+
+  # Archivador trimestral de notificaciones (Bloque C7).
+  # Cada madrugada a las 03:15 exporta a CSV los audit_events de notificaciones
+  # con más de {threshold-days} días y los borra de la DB para mantenerla liviana.
+  # Los CSVs son el backup histórico que SUPER_ADMIN puede consultar/vender desde
+  # su panel de archivo (Bloque C8).
+  #
+  # Estructura generada:
+  #   {path}/{tenantSlug}_{propertySlug}/{YYYY}Q{n}.csv
+  # Ejemplo:
+  #   ./archive/notifications/david_cuernavaca_103_06140/2026Q1.csv
+  #
+  # El directorio por default queda DENTRO de la carpeta del backend pero está en
+  # .gitignore — nunca se commitea. En producción apúntalo a un volumen persistente
+  # fuera del classpath (ej: /var/admindi/archive) para sobrevivir a redeploys.
+  notification-archive:
+    enabled: ${ADMINDI_ARCHIVE_ENABLED:true}
+    path: ${ADMINDI_ARCHIVE_PATH:./archive/notifications}
+    threshold-days: ${ADMINDI_ARCHIVE_THRESHOLD_DAYS:90}
+
+  # Activación de cuentas (staff / agente / proveedor) por link one-shot.
+  # TTL por default 24h; puede acortarse a 1-2h en producción si se prefiere.
+  activation:
+    ttl-hours: ${ADMINDI_ACTIVATION_TTL_HOURS:24}
+
+  # Flujo unificado de agentes (Fase 2).
+  agents:
+    # Cadena de notificaciones uno-a-uno: cuánto tiempo espera el sistema antes de pasar
+    # al siguiente agente en la prioridad cuando el actual no responde ACCEPT/REJECT.
+    chain-timeout-hours: ${ADMINDI_AGENT_CHAIN_TIMEOUT_HOURS:72}
+    # Cron del scheduler que busca entradas PENDING expiradas y avanza la cadena. Por
+    # default cada hora en punto — es barato (una consulta con índice parcial) y
+    # suficiente para un timeout de 72h. Subirlo a 5 minutos tampoco daña si hace falta.
+    chain-scheduler-cron: ${ADMINDI_AGENT_CHAIN_CRON:0 0 * * * *}
+    # Recordatorio al dueño sobre prospecto PENDING: cada 24h (cron cada hora valida si
+    # ya pasaron 24h desde el último recordatorio para no repetir).
+    prospect-reminder-cron: ${ADMINDI_PROSPECT_REMINDER_CRON:0 15 * * * *}
+  # Comisiones de agentes.
+  commission:
+    # Porcentaje default que cobra un agente DE PLATAFORMA sobre el total del contrato
+    # (monthly_rent × contract_months). 3% hoy; configurable por SuperAdmin vía env.
+    platform-agent-pct: ${ADMINDI_COMMISSION_PLATFORM_AGENT_PCT:0.03}
+    # Participación de la plataforma sobre la comisión del agente de plataforma. El
+    # usuario lo fijó en 0% (100% al agente). Se deja explícito para auditoría y para
+    # cambiarlo sin tocar código si el modelo cambia.
+    platform-revenue-share-pct: ${ADMINDI_COMMISSION_PLATFORM_REVENUE_PCT:0.00}
+    # Descuento que la plataforma absorbe sobre el costo de mantenimiento cuando el
+    # proveedor asignado es de tipo PLATFORM. 15% hoy — el dueño paga la cotización
+    # del proveedor menos este %.
+    platform-maintenance-discount-pct: ${ADMINDI_MAINTENANCE_DISCOUNT_PCT:0.15}
+
+# V48 / Bloque 3: feature flag para enrutar la eliminación de cuentas (staff,
+# agente, proveedor, tenant) al nuevo AccountLifecycleService unificado.
+# En false mantenemos el flujo legacy (TenantExpedienteArchiveService +
+# OwnerCascadeDeletionService.deleteOrTombstoneStaffOrProvider) sin tombstone
+# de username. En true, entra la regla unificada trail→archive / no-trail→
+# hard-delete y el username se libera explícitamente.
+account:
+  lifecycle:
+    new: ${ACCOUNT_LIFECYCLE_NEW:false}

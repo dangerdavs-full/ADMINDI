@@ -1,0 +1,4 @@
+HTTP_STATUS: 400
+BODY: {"message":"Invoice does not belong to tenant."}
+EXPECT: 500 or 400 with message invoice does not belong to tenant
+RESULT: PASS

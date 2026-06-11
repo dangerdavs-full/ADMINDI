@@ -1,0 +1,145 @@
+ADMINDI — Acta Etapa 0 (criterio producción)
+Fecha paquete: 2026-04-15
+Referencias de plan: ADMINDI_PLAN_FINAL_DEFINITIVO.md, PLAN_FINAL_5_ETAPAS.md
+
+================================================================================
+VEREDICTO (obligatorio, un solo estado)
+================================================================================
+ETAPA_0_READY_PROD
+
+Motivo: checklist prod-like íntegro al 100% con evidencia archivada bajo `qa-evidence/2026-04-15/etapa-0/prod/runs/2026-04-16T00-57-02/` — smoke prod-like **verde** (`PROD_SMOKE_RESULT=PASSED_AUTH_CORE`), arranque con perfil `prod`, `ENCRYPTION_KEY` por env var (no en repo), `ADMINDI_QA_SEED_ENABLED=false` verificado, fail-fast sin clave validado. Transición documental desde **ETAPA_0_BLOQUEADA_PROD** el 2026-04-16.
+
+**ETAPA_0_READY_PROD** (estado objetivo documental): checklist prod-like de esta acta cumplido al 100% con evidencia archivada (arranque `prod`, `ENCRYPTION_KEY` fuera del repo, fail-fast verificado, semilla QA inactiva, smoke prod-like **verde** con credenciales reales no publicadas en el repositorio, runbook de secreto). **No** equivale a **ETAPA_0_CERRADA_PROD** (aceptación formal de negocio/arquitectura, si aplica).
+
+================================================================================
+Dos estados operativos (no intercambiables)
+================================================================================
+- **READY_LOCAL_QA**: entorno local o perfil `qa`, stack real (p. ej. Postgres + Redis), semilla solo si está explícitamente permitida, smoke reproducible con **ids y contextos leídos de la API o del log** para esa BD concreta. No implica cierre de Etapa 0 en prod.
+- **READY_PROD**: cumple **al 100%** el checklist prod-like de esta acta, con evidencia archivada y sin dependencia de credenciales QA del repositorio en el camino crítico de despliegue.
+
+Hasta que exista READY_PROD documentado y auditado, **Etapa 0 no está cerrada**.
+
+================================================================================
+Checklist prod-like obligatorio (ejecutable; todos SÍ para aspirar a cierre)
+================================================================================
+1. `spring.profiles.active=prod` (o equivalente acordado en orquestación; sin perfil prod no hay cierre prod).
+2. `ENCRYPTION_KEY` definida en el runtime, formato acordado con `EncryptionService`, arranque sin error de clave; cifrado no deshabilitado por ausencia de clave.
+3. `ADMINDI_QA_SEED_ENABLED=false` en variables de despliegue (doble barrera junto a `admindi.qa-seed.enabled=false` en `application-prod.yml`).
+4. Backend arranca sin excepción en `ApplicationRunner` de semilla QA (no debe ejecutarse en prod).
+5. Auth: login válido con **cuentas de producción** (no emails `qa.etapa0.*` del repo).
+6. Logout válido; refresh y reuse de refresh según política vigente.
+7. Donde aplique multi-contexto: `select-context` / `switch-context` validados con tokens de prod.
+8. Confirmación explícita: **ningún** flujo de despliegue o recuperación depende de contraseñas/TOTP QA publicados en el repositorio.
+9. Evidencia archivada: log de arranque (fragmento sin secretos), resultado de pruebas mínimas auth (o informe CI) contra instancia prod-like, variables sensibles **no** pegadas en texto plano en el mismo paquete que el acta.
+
+Si **cualquier** ítem falla o no está evidenciado, el veredicto permanece **ETAPA_0_BLOQUEADA_PROD**.
+
+Transición a **ETAPA_0_READY_PROD**: checklist prod-like de esta acta (sección siguiente) **íntegro** + evidencia bajo `qa-evidence/2026-04-15/etapa-0/prod/` sin secretos en texto plano, y al menos una corrida de `etapa0-prod-smoke.ps1` con `PROD_SMOKE_RESULT=PASSED_AUTH_CORE` en una carpeta **concreta** `prod/runs/<run-id>/` (no basta reutilizar rutas mutables en la raíz `prod/`).
+
+Transición a **ETAPA_0_CERRADA_PROD**: **ETAPA_0_READY_PROD** alcanzado + aceptación formal de negocio/arquitectura (fuera de este archivo si el proceso lo exige).
+
+================================================================================
+Implementado en código (referencia)
+================================================================================
+- Semilla QA: `QaEtapa0SeedService`, `QaEtapa0DataSeeder`, `QaEtapa0Constants`; propiedades por nombre; relink de `owner_id` legado; owners QA con MFA de semilla alineado a `AuthService` (rol OWNER exige MFA).
+- Config: `admindi.qa-seed.enabled`, `strict-user-ids`, perfiles `application-local.yml` / `application-qa.yml` / `application-prod.yml`; rate limit prod.
+- `EncryptionService`: clave obligatoria fuera de perfiles de relajación documentados.
+- Smoke: `scripts/etapa0-smoke.ps1` (MFA owner archive, descubrimiento `tenantProfileId`, cuerpo DELETE en PowerShell, probe post-archive inglés/español).
+- Smoke prod-like (sin cuentas QA repo): `scripts/etapa0-prod-smoke.ps1`; evidencia de arranque en `qa-evidence/2026-04-15/etapa-0/prod/` (`PROD_STARTUP_CHECK.txt`, `PROD_SECRET_RUNBOOK.txt`, logs `boot-prod-*.txt`); evidencia **por corrida** inmutable en `prod/runs/<run-id>/` (ver `prod/runs/README.txt`).
+- `EncryptionService`: si el perfil activo incluye `prod`, clave obligatoria aunque otro token sea `qa`.
+- `QaEtapa0DataSeeder`: log **INFO** cuando la semilla está deshabilitada (trazabilidad en arranque `prod`).
+
+================================================================================
+Validado en runtime (local/QA; no equivale a prod)
+================================================================================
+- Compilación Maven del backend en entorno de desarrollo del equipo.
+- Smoke Etapa 0 contra instancia **local/qa** con semilla: cadena tenant multi (login, contexts, select/switch, refresh, reuse, logout) y escenario archive **RUTA determinista** (owner QA archive + tenant QA archive) con TOTP de secreto de semilla cuando aplica.
+- Artefactos bajo `qa-evidence/2026-04-15/etapa-0/`: `SMOKE_HTTP.log`, `SMOKE_RESULT.txt` (regenerados en la última corrida válida de ese entorno).
+
+================================================================================
+Validado en runtime (prod-like) — completado 2026-04-16
+================================================================================
+**Sí evidenciado (arranque JVM, perfil `prod`, sin secretos en este acta):**
+- Fail-fast sin `ENCRYPTION_KEY`: arranque aborta con mensaje `[ENCRYPTION] FATAL: ...` — ver `qa-evidence/2026-04-15/etapa-0/prod/PROD_STARTUP_CHECK.txt` sección A y `boot-prod-no-key-out.txt`.
+- Clave Base64 válida (32 bytes, generada solo en shell de validación, **no** persistida en repo): log `[ENCRYPTION] AES-256-GCM encryption initialized successfully` + `Started BackendApplication` — `PROD_STARTUP_CHECK.txt` sección B, `boot-prod-valid-key-port8081-out.txt` (puerto 8081 por conflicto con otra instancia en 8080).
+- Clave inválida (longitud ≠ 32 bytes o Base64 ilegible): arranque falla — secciones C y D de `PROD_STARTUP_CHECK.txt`.
+- Semilla QA desactivada en arranque `prod`: log `[QA_SEED] Deshabilitado (admindi.qa-seed.enabled=false); no se ejecuta semilla en este arranque.` (código `QaEtapa0DataSeeder` nivel INFO).
+- Endurecimiento `EncryptionService`: perfil activo contiene `prod` ⇒ clave obligatoria aunque exista otro token (p. ej. evitar `prod,qa` relajando cifrado).
+
+**Smoke prod-like verde (PASSED_AUTH_CORE) — corrida 2026-04-16T00-57-02:**
+- Corrida verde end-to-end con cuenta `superadmin@admindi.com` (no `qa.etapa0.*`), perfil `prod`, `ENCRYPTION_KEY` por env var, `ADMINDI_QA_SEED_ENABLED=false`.
+- Cadena auth completa validada: login (200) → MFA verify (200) → contexts (200) → refresh (200) → reuse detection (400) → logout (204) → post-logout denial (403).
+- Evidencia inmutable: `qa-evidence/2026-04-15/etapa-0/prod/runs/2026-04-16T00-57-02/` (3 archivos: `PROD_SMOKE_RESULT.txt`, `PROD_SMOKE_HTTP.log`, `RUN_METADATA.txt`).
+- `PROD_SMOKE_RESULT=PASSED_AUTH_CORE`, exit_code=0.
+- Credenciales utilizadas en la corrida **no** están en ningún archivo del repositorio.
+
+================================================================================
+Completado (ETAPA_0_READY_PROD alcanzado)
+================================================================================
+- ✅ Smoke prod-like verde `PASSED_AUTH_CORE` en `prod/runs/2026-04-16T00-57-02/`.
+- Pendiente futuro (no bloquea READY_PROD): rotación / re-cifrado masivo — ver **TODO** serio en `PROD_SECRET_RUNBOOK.txt` antes de rotar clave con datos `enc:v1:` en producción.
+
+================================================================================
+Riesgos
+================================================================================
+- Credenciales y secreto TOTP de semilla en repo: **solo** entornos aislados; nunca como supuesto de seguridad de producción.
+- Confundir READY_LOCAL_QA con cierre: riesgo de despliegue sin `ENCRYPTION_KEY` o con semilla mal parcheada.
+- `strict-user-ids=false`: ids reales divergen del doc; documentación y smoke deben leer contextos desde API/log, no UUID fijos del código como “verdad” en todas las BDs.
+
+================================================================================
+Archivos corregidos en este corte
+================================================================================
+- `scripts/etapa0-prod-smoke.ps1` (evidencia inmutable `prod/runs/<run-id>/`)
+- `scripts/QA_SEED_USERS_README.txt`
+- `qa-evidence/2026-04-15/etapa-0/prod/runs/README.txt`
+- `qa-evidence/2026-04-15/BLOQUEOS_GLOBALES_PROD.txt`
+- `qa-evidence/2026-04-15/etapa-0/QA_SEED_USERS.txt`
+- `qa-evidence/2026-04-15/etapa-0/ENTREGA_ETAPA_0_FINAL.txt` (este archivo)
+
+================================================================================
+Evidencia exacta (local/QA)
+================================================================================
+- `qa-evidence/2026-04-15/etapa-0/SMOKE_HTTP.log`
+- `qa-evidence/2026-04-15/etapa-0/SMOKE_RESULT.txt`
+- `qa-evidence/2026-04-15/etapa-0/QA_SEED_USERS.txt`
+
+================================================================================
+Evidencia exacta (prod-like / Etapa 0 cierre)
+================================================================================
+- `qa-evidence/2026-04-15/etapa-0/prod/PROD_STARTUP_CHECK.txt`
+- `qa-evidence/2026-04-15/etapa-0/prod/PROD_SECRET_RUNBOOK.txt`
+- `qa-evidence/2026-04-15/etapa-0/prod/boot-prod-no-key-out.txt` (fail-fast sin clave)
+- `qa-evidence/2026-04-15/etapa-0/prod/boot-prod-valid-key-port8081-out.txt` (arranque OK con clave efímera en shell)
+- `qa-evidence/2026-04-15/etapa-0/prod/boot-prod-invalid-key-len-out.txt`, `boot-prod-invalid-b64-out.txt`
+- Smoke prod-like **por corrida** (run anterior): `./qa-evidence/2026-04-15/etapa-0/prod/runs/2026-04-16T00-42-11/` — `PROD_SMOKE_RESULT=BLOCKED_NO_PROD_CREDS` (framework listo, pendiente credenciales operador).
+- **Smoke prod-like VERDE (run definitivo):** `./qa-evidence/2026-04-15/etapa-0/prod/runs/2026-04-16T00-57-02/` — contiene `PROD_SMOKE_HTTP.log`, `PROD_SMOKE_RESULT.txt`, `RUN_METADATA.txt` (`PROD_SMOKE_RESULT=PASSED_AUTH_CORE`, exit_code=0).
+- Layout de corridas: `qa-evidence/2026-04-15/etapa-0/prod/runs/README.txt`
+
+================================================================================
+Criterio exacto para abrir Etapa 1
+================================================================================
+1. Veredicto **ETAPA_0_READY_PROD** alcanzado ✅ (checklist prod-like íntegro + evidencia archivada).
+2. Decisión explícita de negocio/arquitectura de avanzar Etapa 1 (no inferida por verde en local).
+3. Para **ETAPA_0_CERRADA_PROD**: requiere aceptación formal de negocio/arquitectura (si aplica).
+
+Smoke prod-like verde Etapa 0 existe con evidencia bajo `prod/runs/2026-04-16T00-57-02/`. **STATUS_PROD** de Etapa 1 pasa de **BLOCKED_BY_STAGE0** a **READY_FOR_REVIEW** — pendiente solo la decisión de negocio.
+
+================================================================================
+Actualización gobierno 2026-04-15 (avance ingeniería Etapas 1–5)
+================================================================================
+- Etapa 0 alcanza **READY_PROD** el 2026-04-16; registro consolidado: `qa-evidence/2026-04-15/BLOQUEOS_GLOBALES_PROD.txt`.
+- Ese estado habilita la revisión prod de Etapas 1–5. **No** se declara **CERRADA_PROD** ninguna etapa hasta cierre global acordado (aceptación formal de negocio/arquitectura, si aplica).
+- El avance a **READY_PROD** no es equivalente a **CERRADA_PROD**; la distinción se mantiene por si el proceso exige aceptación formal adicional.
+
+================================================================================
+Formato de entrega — corte evidencia inmutable (2026-04-16)
+================================================================================
+- **Implementado en código:** `scripts/etapa0-prod-smoke.ps1` escribe evidencia solo bajo `prod/runs/<run-id>/` (tres archivos por corrida); raíz `prod/` no se reutiliza para sobrescribir smoke entre ejecuciones.
+- **Validado en runtime (corrida verde):** smoke prod-like `PASSED_AUTH_CORE` en `runs/2026-04-16T00-57-02/` — cadena auth completa (login+MFA → contexts → refresh → reuse → logout → post-logout denial).
+- **Corrida anterior (framework):** `runs/2026-04-16T00-42-11/` — `BLOCKED_NO_PROD_CREDS` (exit 2), framework verificado sin credenciales.
+- **Riesgos:** sin cambio respecto a la sección «Riesgos» de este acta; credenciales nunca en el repositorio.
+- **STATUS_LOCAL_QA:** READY_LOCAL_QA (smoke Etapa 0 local/QA documentado; artefactos bajo `qa-evidence/2026-04-15/etapa-0/`).
+- **STATUS_PROD:** Etapa 0 **ETAPA_0_READY_PROD**; Etapa 1 **STATUS_PROD=READY_FOR_REVIEW**.
+- **run-id exacto de evidencia prod-like smoke VERDE:** `./qa-evidence/2026-04-15/etapa-0/prod/runs/2026-04-16T00-57-02/`
+- **run-id de referencia (framework, sin creds):** `./qa-evidence/2026-04-15/etapa-0/prod/runs/2026-04-16T00-42-11/`
+- **Veredicto final:** **ETAPA_0_READY_PROD**

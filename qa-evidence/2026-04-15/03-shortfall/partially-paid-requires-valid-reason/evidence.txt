@@ -1,0 +1,4 @@
+HTTP_STATUS: 400
+BODY: {"message":"Invalid shortfallReason."}
+EXPECT: invalid shortfallReason
+RESULT: PASS
